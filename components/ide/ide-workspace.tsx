@@ -23,10 +23,13 @@ import {
   ChevronUp,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Slide } from "@/lib/mock-data";
 import { ILesson } from "@/types";
+import { useToast } from "@/hooks/use-toast";
+import { progressApi } from "@/lib/api/progress";
 
 export default function IdeWorkspace({
   slides,
@@ -64,6 +67,9 @@ export default function IdeWorkspace({
   const [consoleMinimized, setConsoleMinimized] = useState(true);
   const [isPreviewCollapsed, setIsPreviewCollapsed] = useState(false);
   const [isAiCollapsed, setIsAiCollapsed] = useState(false);
+  const [externalCode, setExternalCode] = useState<string | null>(null);
+  const [isLoadingSavedCode, setIsLoadingSavedCode] = useState(false);
+  const { toast } = useToast();
 
   // Default layout configuration
   const getLayoutSizes = () => {
@@ -106,6 +112,69 @@ export default function IdeWorkspace({
   const getStartingCode = () => {
     const firstSlide = slides?.[0];
     return firstSlide?.startingCode || "";
+  };
+
+  const handleLoadMyCode = async () => {
+    if (!studentId || studentId === "guest") {
+      toast({
+        title: "Sign in required",
+        description: "Please sign in to load your saved progress.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!currentLessonId) {
+      toast({
+        title: "Select a lesson",
+        description: "Choose a lesson before loading saved code.",
+      });
+      return;
+    }
+
+    setIsLoadingSavedCode(true);
+
+    try {
+      const progress = await progressApi.getByStudentAndCourse(
+        studentId,
+        courseId
+      );
+
+      const lessonCode =
+        (progress as any)?.lessonCode?.[currentLessonId]?.code ||
+        (Array.isArray((progress as any)?.progress)
+          ? (progress as any)?.progress
+              ?.slice()
+              ?.reverse()
+              ?.find(
+                (entry: { lessonId?: { toString: () => string }; code?: string }) =>
+                  entry.lessonId?.toString() === currentLessonId
+              )?.code
+          : "");
+
+      if (lessonCode) {
+        setExternalCode(lessonCode);
+        setMainCode(lessonCode);
+        toast({
+          title: "Code loaded",
+          description: "Your saved code has been restored in the editor.",
+        });
+      } else {
+        toast({
+          title: "No saved code",
+          description: "We couldn't find any saved code for this lesson yet.",
+        });
+      }
+    } catch (error) {
+      console.error("Failed to load saved code:", error);
+      toast({
+        title: "Load failed",
+        description: "We couldn't load your saved code. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingSavedCode(false);
+    }
   };
 
   return (
@@ -193,9 +262,26 @@ export default function IdeWorkspace({
               </TabsContent>
 
               <TabsContent value="editor" className="h-full m-0 p-0">
+                <div className="flex items-center justify-between border-b bg-muted/30 px-3 py-2">
+                  <span className="text-sm font-medium">Editor</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={handleLoadMyCode}
+                    disabled={isLoadingSavedCode}
+                  >
+                    {isLoadingSavedCode ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      "Load My Code"
+                    )}
+                  </Button>
+                </div>
                 <IdeEditor
                   setMainCode={setMainCode}
                   startingCode={getStartingCode()}
+                  externalCode={externalCode}
                 />
               </TabsContent>
 
@@ -250,7 +336,7 @@ export default function IdeWorkspace({
                   <div className="h-full flex flex-col">
                     <div className="flex items-center justify-between p-2 border-b bg-muted/30">
                       <span className="text-sm font-medium">Editor</span>
-                      <div className="flex gap-1">
+                      <div className="flex gap-1 items-center">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -279,12 +365,26 @@ export default function IdeWorkspace({
                             )}
                           </Button>
                         )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleLoadMyCode}
+                          disabled={isLoadingSavedCode}
+                          className="h-6 px-2 text-xs font-medium"
+                        >
+                          {isLoadingSavedCode ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            "Load My Code"
+                          )}
+                        </Button>
                       </div>
                     </div>
                     <div className="flex-1 min-h-0">
                       <IdeEditor
                         setMainCode={setMainCode}
                         startingCode={getStartingCode()}
+                        externalCode={externalCode}
                       />
                     </div>
                   </div>

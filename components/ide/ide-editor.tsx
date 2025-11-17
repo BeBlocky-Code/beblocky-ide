@@ -47,9 +47,11 @@ interface CodeState {
 export default function IdeEditor({
   setMainCode,
   startingCode = "",
+  externalCode,
 }: {
   setMainCode: (code: string) => void;
   startingCode?: string;
+  externalCode?: string | null;
 }) {
   const { settings } = useSettings();
   const { theme } = useTheme();
@@ -66,23 +68,24 @@ export default function IdeEditor({
   useEffect(() => {
     if (startingCode && !initializedRef.current) {
       try {
-        // Try to extract HTML, CSS, and JS from the starting code
-        const htmlMatch = /<body>([\s\S]*?)<\/body>/i.exec(startingCode);
-        const cssMatch = /<style>([\s\S]*?)<\/style>/i.exec(startingCode);
-        const jsMatch = /<script>([\s\S]*?)<\/script>/i.exec(startingCode);
-
-        setCode({
-          htmlCode: htmlMatch ? htmlMatch[1].trim() : "",
-          cssCode: cssMatch ? cssMatch[1].trim() : "",
-          jsCode: jsMatch ? jsMatch[1].trim() : "",
-        });
-
+        setCode(extractCodeSections(startingCode));
         initializedRef.current = true;
       } catch (error) {
         console.error("Error parsing starting code:", error);
       }
     }
   }, [startingCode]);
+
+  // Load external code when provided (e.g., "Load My Code" action)
+  useEffect(() => {
+    if (!externalCode) return;
+
+    try {
+      setCode(extractCodeSections(externalCode));
+    } catch (error) {
+      console.error("Error parsing external code:", error);
+    }
+  }, [externalCode]);
 
   // Update the main code whenever any of the code sections change
   useEffect(() => {
@@ -355,4 +358,16 @@ function generateHtmlTemplate({
   </body>
 </html>
   `.trim();
+}
+
+function extractCodeSections(source: string): CodeState {
+  const htmlMatch = /<body>([\s\S]*?)<\/body>/i.exec(source);
+  const cssMatch = /<style>([\s\S]*?)<\/style>/i.exec(source);
+  const jsMatch = /<script>([\s\S]*?)<\/script>/i.exec(source);
+
+  return {
+    htmlCode: htmlMatch ? htmlMatch[1].trim() : "",
+    cssCode: cssMatch ? cssMatch[1].trim() : "",
+    jsCode: jsMatch ? jsMatch[1].trim() : "",
+  };
 }
