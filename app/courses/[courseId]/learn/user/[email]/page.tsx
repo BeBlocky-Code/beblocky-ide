@@ -63,6 +63,8 @@ export default function LearnPage() {
   const [timeSpent, setTimeSpent] = useState<number>(0);
   const [timeTrackerInterval, setTimeTrackerInterval] =
     useState<NodeJS.Timeout | null>(null);
+  const [lastSavedCode, setLastSavedCode] = useState<string>("");
+  
   // Start time tracking when component mounts
   useEffect(() => {
     console.log("⏰ [TIME TRACKER] Starting time tracking...");
@@ -140,6 +142,7 @@ export default function LearnPage() {
             );
             setCurrentSlideIndex(targetSlideIndex);
             setMainCode(targetCode);
+            setLastSavedCode(targetCode);
           }
         }
 
@@ -227,22 +230,25 @@ export default function LearnPage() {
                       );
                       if (slideIndex !== -1) {
                         setCurrentSlideIndex(slideIndex);
-                        setMainCode(
+                        const loadedCode =
                           lastProgress.code ||
-                            slides[slideIndex]?.startingCode ||
-                            ""
-                        );
+                          slides[slideIndex]?.startingCode ||
+                          "";
+                        setMainCode(loadedCode);
+                        setLastSavedCode(loadedCode);
                       } else {
                         setCurrentSlideIndex(0);
-                        setMainCode(
-                          lastProgress.code || slides[0]?.startingCode || ""
-                        );
+                        const loadedCode =
+                          lastProgress.code || slides[0]?.startingCode || "";
+                        setMainCode(loadedCode);
+                        setLastSavedCode(loadedCode);
                       }
                     } else {
                       setCurrentSlideIndex(0);
-                      setMainCode(
-                        lastProgress.code || slides[0]?.startingCode || ""
-                      );
+                      const loadedCode =
+                        lastProgress.code || slides[0]?.startingCode || "";
+                      setMainCode(loadedCode);
+                      setLastSavedCode(loadedCode);
                     }
                   }
                 }
@@ -345,7 +351,9 @@ export default function LearnPage() {
       const slides = (selectedLesson.slides as unknown as ISlide[]) || [];
       setCurrentSlides(slides);
       setCurrentSlideIndex(0); // Reset to first slide when changing lessons
-      setMainCode(slides[0]?.startingCode || "");
+      const startingCode = slides[0]?.startingCode || "";
+      setMainCode(startingCode);
+      setLastSavedCode(startingCode);
 
       // Update progress for the selected lesson (only for students)
       if (userData?.id !== "guest" && userData?.role === UserRole.STUDENT) {
@@ -551,6 +559,9 @@ export default function LearnPage() {
           title: "Progress Saved",
           description: `Your ${detectedLanguage} code has been saved to your progress.`,
         });
+        
+        // Update last saved code to track unsaved changes
+        setLastSavedCode(mainCode);
       } else {
         throw new Error("Failed to get or create progress record");
       }
@@ -579,6 +590,9 @@ export default function LearnPage() {
 
       // Don't throw error - allow localStorage save to succeed
     }
+    
+    // Update last saved code even if API save failed (localStorage save succeeded)
+    setLastSavedCode(mainCode);
 
     console.log("🏁 [SAVE API] Save process completed");
   };
@@ -588,6 +602,46 @@ export default function LearnPage() {
     // TODO: Implement code formatting
     console.log("Format code functionality to be implemented");
   };
+
+  // Track unsaved changes and warn user before closing tab
+  useEffect(() => {
+    // Initialize lastSavedCode when mainCode is first set
+    if (mainCode && !lastSavedCode) {
+      setLastSavedCode(mainCode);
+    }
+    
+    // Also check if current code matches what's saved in localStorage
+    // This handles the case when "Load My Code" is used
+    if (mainCode && currentLessonId) {
+      const saveKey = `code-${courseId}-${currentLessonId}`;
+      const savedCode = localStorage.getItem(saveKey);
+      if (savedCode && mainCode === savedCode && mainCode !== lastSavedCode) {
+        // Code matches what's in localStorage, so it's considered saved
+        setLastSavedCode(mainCode);
+      }
+    }
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Check if there are unsaved changes
+      const hasUnsavedChanges = mainCode !== lastSavedCode && mainCode.trim() !== "";
+      
+      if (hasUnsavedChanges) {
+        // Modern browsers ignore custom messages and show their own
+        // But we still need to set returnValue to trigger the dialog
+        e.preventDefault();
+        e.returnValue = ""; // Required for Chrome
+        return ""; // Required for some other browsers
+      }
+    };
+
+    // Add event listener
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [mainCode, lastSavedCode, currentLessonId, courseId]);
 
   // Handle AI assistant toggle
   const handleToggleAiAssistant = () => {
