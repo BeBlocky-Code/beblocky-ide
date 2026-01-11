@@ -25,7 +25,31 @@ export const getCourseWithContent = async (courseId: string) => {
         );
         return {
           ...lesson,
-          slides: slides.sort((a, b) => a.order - b.order), // Sort slides by order
+          slides: slides
+            .slice()
+            .sort((a, b) => {
+              const orderA = Number.isFinite(Number((a as any)?.order))
+                ? Number((a as any)?.order)
+                : Number.MAX_SAFE_INTEGER;
+              const orderB = Number.isFinite(Number((b as any)?.order))
+                ? Number((b as any)?.order)
+                : Number.MAX_SAFE_INTEGER;
+              const orderDiff = orderA - orderB;
+              if (orderDiff !== 0) return orderDiff;
+
+              const timeA = new Date(
+                (a as any)?.updatedAt || (a as any)?.createdAt || 0
+              ).getTime();
+              const timeB = new Date(
+                (b as any)?.updatedAt || (b as any)?.createdAt || 0
+              ).getTime();
+              const timeDiff = timeA - timeB;
+              if (timeDiff !== 0) return timeDiff;
+
+              return String((a as any)?._id || "").localeCompare(
+                String((b as any)?._id || "")
+              );
+            }), // Sort slides by order (stable tie-breakers)
         };
       })
     );

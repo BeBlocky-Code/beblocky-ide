@@ -65,7 +65,28 @@ export default function LearnPage() {
   const [timeTrackerInterval, setTimeTrackerInterval] =
     useState<NodeJS.Timeout | null>(null);
   const [lastSavedCode, setLastSavedCode] = useState<string>("");
-  
+
+  const sortSlidesByOrder = (slides: ISlide[]) => {
+    const toOrder = (s: any) => {
+      const n = Number(s?.order);
+      return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
+    };
+    const toTime = (s: any) => {
+      const t = new Date(s?.updatedAt || s?.createdAt || 0).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+
+    return (slides || []).slice().sort((a, b) => {
+      const orderDiff = toOrder(a) - toOrder(b);
+      if (orderDiff !== 0) return orderDiff;
+      const timeDiff = toTime(a) - toTime(b);
+      if (timeDiff !== 0) return timeDiff;
+      return String((a as any)?._id || "").localeCompare(
+        String((b as any)?._id || "")
+      );
+    });
+  };
+
   // Start time tracking when component mounts
   useEffect(() => {
     console.log("⏰ [TIME TRACKER] Starting time tracking...");
@@ -151,13 +172,20 @@ export default function LearnPage() {
             // Default to first lesson if no progress exists
             let targetLesson = courseData.lessons[0];
             let targetSlideIndex = 0;
-            let targetCode =
-              (courseData.lessons[0].slides as unknown as ISlide[])?.[0]
-                ?.startingCode || "";
+            const initialSlides =
+              (courseData.lessons[0].slides as unknown as ISlide[]) || [];
+            const sortedInitialSlides = sortSlidesByOrder(initialSlides);
+            let targetCode = sortedInitialSlides?.[0]?.startingCode || "";
 
             setCurrentLessonId(targetLesson._id?.toString() || "");
-            setCurrentSlides(
-              (targetLesson.slides as unknown as ISlide[]) || []
+            setCurrentSlides(sortedInitialSlides);
+            console.log(
+              "🔍 [FETCH DATA] Current slides (sorted):",
+              sortedInitialSlides.map((s: any) => ({
+                id: s?._id,
+                title: s?.title,
+                order: s?.order,
+              }))
             );
             setCurrentSlideIndex(targetSlideIndex);
             setMainCode(targetCode);
@@ -237,12 +265,13 @@ export default function LearnPage() {
                   if (targetLesson) {
                     const slides =
                       (targetLesson.slides as unknown as ISlide[]) || [];
+                    const sortedSlides = sortSlidesByOrder(slides);
                     setCurrentLessonId(lessonId);
-                    setCurrentSlides(slides);
+                    setCurrentSlides(sortedSlides);
 
                     // Find the slide index based on slideId if available
                     if (lastProgress.slideId) {
-                      const slideIndex = slides.findIndex(
+                      const slideIndex = sortedSlides.findIndex(
                         (slide) =>
                           slide._id?.toString() ===
                           lastProgress.slideId?.toString()
@@ -251,21 +280,25 @@ export default function LearnPage() {
                         setCurrentSlideIndex(slideIndex);
                         const loadedCode =
                           lastProgress.code ||
-                          slides[slideIndex]?.startingCode ||
+                          sortedSlides[slideIndex]?.startingCode ||
                           "";
                         setMainCode(loadedCode);
                         setLastSavedCode(loadedCode);
                       } else {
                         setCurrentSlideIndex(0);
                         const loadedCode =
-                          lastProgress.code || slides[0]?.startingCode || "";
+                          lastProgress.code ||
+                          sortedSlides[0]?.startingCode ||
+                          "";
                         setMainCode(loadedCode);
                         setLastSavedCode(loadedCode);
                       }
                     } else {
                       setCurrentSlideIndex(0);
                       const loadedCode =
-                        lastProgress.code || slides[0]?.startingCode || "";
+                        lastProgress.code ||
+                        sortedSlides[0]?.startingCode ||
+                        "";
                       setMainCode(loadedCode);
                       setLastSavedCode(loadedCode);
                     }
@@ -368,9 +401,10 @@ export default function LearnPage() {
 
     if (selectedLesson) {
       const slides = (selectedLesson.slides as unknown as ISlide[]) || [];
-      setCurrentSlides(slides);
+      const sortedSlides = sortSlidesByOrder(slides);
+      setCurrentSlides(sortedSlides);
       setCurrentSlideIndex(0); // Reset to first slide when changing lessons
-      const startingCode = slides[0]?.startingCode || "";
+      const startingCode = sortedSlides[0]?.startingCode || "";
       setMainCode(startingCode);
       setLastSavedCode(startingCode);
 
@@ -578,7 +612,7 @@ export default function LearnPage() {
           title: "Progress Saved",
           description: `Your ${detectedLanguage} code has been saved to your progress.`,
         });
-        
+
         // Update last saved code to track unsaved changes
         setLastSavedCode(mainCode);
       } else {
@@ -609,7 +643,7 @@ export default function LearnPage() {
 
       // Don't throw error - allow localStorage save to succeed
     }
-    
+
     // Update last saved code even if API save failed (localStorage save succeeded)
     setLastSavedCode(mainCode);
 
@@ -628,7 +662,7 @@ export default function LearnPage() {
     if (mainCode && !lastSavedCode) {
       setLastSavedCode(mainCode);
     }
-    
+
     // Also check if current code matches what's saved in localStorage
     // This handles the case when "Load My Code" is used
     if (mainCode && currentLessonId) {
@@ -642,8 +676,9 @@ export default function LearnPage() {
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       // Check if there are unsaved changes
-      const hasUnsavedChanges = mainCode !== lastSavedCode && mainCode.trim() !== "";
-      
+      const hasUnsavedChanges =
+        mainCode !== lastSavedCode && mainCode.trim() !== "";
+
       if (hasUnsavedChanges) {
         // Modern browsers ignore custom messages and show their own
         // But we still need to set returnValue to trigger the dialog

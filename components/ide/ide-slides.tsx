@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,11 +45,48 @@ export default function IdeSlides({
   initialSlideIndex?: number;
   onSlideChange?: (slideIndex: number) => void;
 }) {
+  // Defensive ordering: always render slides by their `order` field (stable tie-breakers).
+  // This avoids UI drift if any upstream code path provides slides unsorted.
+  const orderedSlides = useMemo(() => {
+    const toOrder = (s: any) => {
+      const n = Number(s?.order);
+      return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
+    };
+    const toTime = (s: any) => {
+      const t = new Date(s?.updatedAt || s?.createdAt || 0).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+
+    return (slides || []).slice().sort((a: any, b: any) => {
+      const orderDiff = toOrder(a) - toOrder(b);
+      if (orderDiff !== 0) return orderDiff;
+      const timeDiff = toTime(a) - toTime(b);
+      if (timeDiff !== 0) return timeDiff;
+      return String(a?._id || a?.id || "").localeCompare(
+        String(b?._id || b?.id || "")
+      );
+    });
+  }, [slides]);
+
   const [currentSlideIndex, setCurrentSlideIndex] = useState(initialSlideIndex);
   const [activeTab, setActiveTab] = useState("content");
   const [copied, setCopied] = useState(false);
 
-  const currentSlide = slides[currentSlideIndex] || {
+  // Keep internal slide index in sync when parent changes lesson/slide or slides reorder.
+  useEffect(() => {
+    const nextIndex =
+      typeof initialSlideIndex === "number" &&
+      Number.isFinite(initialSlideIndex)
+        ? initialSlideIndex
+        : 0;
+    const clampedIndex =
+      orderedSlides && orderedSlides.length > 0
+        ? Math.min(nextIndex, orderedSlides.length - 1)
+        : 0;
+    setCurrentSlideIndex(clampedIndex);
+  }, [initialSlideIndex, currentLessonId, orderedSlides]);
+
+  const currentSlide = orderedSlides[currentSlideIndex] || {
     _id: "default",
     courseId: courseId,
     order: 0,
@@ -62,12 +99,12 @@ export default function IdeSlides({
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-  const totalSlides = slides.length;
+  const totalSlides = orderedSlides.length;
   const progress =
     totalSlides > 0 ? ((currentSlideIndex + 1) / totalSlides) * 100 : 0;
 
   const goToNextSlide = () => {
-    if (currentSlideIndex < slides.length - 1) {
+    if (currentSlideIndex < orderedSlides.length - 1) {
       const newIndex = currentSlideIndex + 1;
       setCurrentSlideIndex(newIndex);
       onSlideChange?.(newIndex);

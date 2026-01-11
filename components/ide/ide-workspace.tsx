@@ -333,6 +333,8 @@ export default function IdeWorkspace({
                         lessons={lessons}
                         currentLessonId={currentLessonId}
                         onSelectLesson={onSelectLesson}
+                        initialSlideIndex={initialSlideIndex}
+                        onSlideChange={onSlideChange}
                       />
                     </ResizablePanel>
                     <ResizableHandle withHandle />
