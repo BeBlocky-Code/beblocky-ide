@@ -22,16 +22,30 @@ type LogEntry = {
   timestamp: Date;
 };
 
+declare global {
+  interface Window {
+    loadPyodide?: (options?: any) => Promise<any>;
+  }
+}
+
 export default function IdeConsole({
   code,
+  courseLanguage,
   onMinimize,
 }: {
   code: string;
+  courseLanguage?: string;
   onMinimize?: () => void;
 }) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [activeTab, setActiveTab] = useState("console");
   const consoleRef = useRef<HTMLDivElement>(null);
+  const pyodideRef = useRef<any>(null);
+  const pyodideLoadingRef = useRef<Promise<any> | null>(null);
+  const pyodideScriptLoadingRef = useRef<Promise<void> | null>(null);
+
+  const normalizedCourseLanguage = (courseLanguage || "web").toLowerCase();
+  const isPythonCourse = normalizedCourseLanguage === "python";
 
   // Clear logs
   const clearLogs = useCallback(() => {
@@ -49,9 +63,114 @@ export default function IdeConsole({
     setLogs((prev) => [...prev, newLog]);
   }, []);
 
+  const ensurePyodideScript = useCallback(async () => {
+    if (typeof window === "undefined") return;
+
+    // Already present (either loaded before or injected by something else)
+    if (typeof window.loadPyodide === "function") return;
+
+    if (!pyodideScriptLoadingRef.current) {
+      pyodideScriptLoadingRef.current = new Promise<void>((resolve, reject) => {
+        const existing = document.querySelector<HTMLScriptElement>(
+          'script[data-pyodide="true"]'
+        );
+        if (existing) {
+          existing.addEventListener("load", () => resolve());
+          existing.addEventListener("error", () =>
+            reject(new Error("Failed to load Pyodide script."))
+          );
+          return;
+        }
+
+        const script = document.createElement("script");
+        script.dataset.pyodide = "true";
+        script.src = "https://cdn.jsdelivr.net/pyodide/v0.29.1/full/pyodide.js";
+        script.async = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error("Failed to load Pyodide script."));
+        document.head.appendChild(script);
+      });
+    }
+
+    await pyodideScriptLoadingRef.current;
+  }, []);
+
+  const ensurePyodide = useCallback(async () => {
+    if (pyodideRef.current) return pyodideRef.current;
+    if (!pyodideLoadingRef.current) {
+      pyodideLoadingRef.current = (async () => {
+        await ensurePyodideScript();
+        const loadPyodide = window.loadPyodide;
+        if (typeof loadPyodide !== "function") {
+          throw new Error("Pyodide failed to load (window.loadPyodide missing).");
+        }
+
+        // indexURL is required when loading from CDN
+        const py = await loadPyodide({
+          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.29.1/full/",
+        });
+
+        // Fallback: some Pyodide builds expose setStdout/setStderr
+        try {
+          if (typeof py?.setStdout === "function") {
+            py.setStdout({
+              batched: (s: string) => s && addLog(s, "info"),
+            });
+          }
+          if (typeof py?.setStderr === "function") {
+            py.setStderr({
+              batched: (s: string) => s && addLog(s, "error"),
+            });
+          }
+        } catch {
+          // ignore
+        }
+
+        return py;
+      })();
+    }
+
+    pyodideRef.current = await pyodideLoadingRef.current;
+    return pyodideRef.current;
+  }, [addLog, ensurePyodideScript]);
+
+  const runPythonCode = useCallback(
+    async (pythonCode: string) => {
+      clearLogs();
+
+      if (!pythonCode?.trim()) {
+        addLog("No Python code to run.", "warning");
+        return;
+      }
+
+      try {
+        addLog("Loading Python runtime…", "info");
+        const py = await ensurePyodide();
+        addLog("Running Python…", "info");
+
+        const result =
+          typeof py?.runPythonAsync === "function"
+            ? await py.runPythonAsync(pythonCode)
+            : py.runPython(pythonCode);
+
+        if (result !== undefined && result !== null && String(result).length) {
+          addLog(String(result), "success");
+        }
+      } catch (error: any) {
+        addLog(error?.message ? String(error.message) : String(error), "error");
+      }
+    },
+    [addLog, clearLogs, ensurePyodide]
+  );
+
   // Run code and capture console output
   const runCode = useCallback(() => {
     clearLogs();
+
+    if (isPythonCourse) {
+      void runPythonCode(code);
+      return;
+    }
 
     try {
       // Create a sandbox iframe to run the code
@@ -89,9 +208,6 @@ export default function IdeConsole({
           addLog(args.map((arg) => formatLogArgument(arg)).join(" "), "info");
         };
 
-        // Extract JavaScript code from the HTML
-        const jsCode = extractJavaScriptFromHTML(code);
-
         // Run the code
         try {
           const doc = iframe.contentDocument || iframe.contentWindow.document;
@@ -112,7 +228,7 @@ export default function IdeConsole({
     } catch (error) {
       addLog(`Error setting up console: ${error}`, "error");
     }
-  }, [code, clearLogs, addLog]);
+  }, [code, clearLogs, addLog, isPythonCourse, runPythonCode]);
 
   // Extract JavaScript code from HTML
   const extractJavaScriptFromHTML = (html: string): string => {
@@ -163,10 +279,11 @@ export default function IdeConsole({
 
   // Auto-run code when component mounts
   useEffect(() => {
-    if (code) {
+    // Auto-run only for web preview (Python should run on explicit action)
+    if (!isPythonCourse && code) {
       runCode();
     }
-  }, [code, runCode]);
+  }, [code, runCode, isPythonCourse]);
 
   return (
     <Card className="h-full flex flex-col border-none rounded-none shadow-none">

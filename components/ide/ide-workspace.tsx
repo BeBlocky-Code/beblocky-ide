@@ -34,6 +34,7 @@ import { progressApi } from "@/lib/api/progress";
 export default function IdeWorkspace({
   slides,
   courseId,
+  courseLanguage,
   mainCode,
   setMainCode,
   lessons,
@@ -48,6 +49,7 @@ export default function IdeWorkspace({
 }: {
   slides: any[]; // Changed from unknown[] to any[] to match expected types
   courseId: string;
+  courseLanguage?: string;
   mainCode: string;
   setMainCode: (code: string) => void;
   lessons?: ILesson[];
@@ -62,6 +64,8 @@ export default function IdeWorkspace({
 }) {
   const { theme } = useTheme();
   const isMobile = useMediaQuery("(max-width: 1000px)");
+  const normalizedCourseLanguage = (courseLanguage || "web").toLowerCase();
+  const isPythonCourse = normalizedCourseLanguage === "python";
   const [activeTab, setActiveTab] = useState("editor");
   const [showConsole, setShowConsole] = useState(false);
   const [consoleMinimized, setConsoleMinimized] = useState(true);
@@ -180,7 +184,7 @@ export default function IdeWorkspace({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Minimized console tab */}
-      {showConsole && consoleMinimized && !isMobile && (
+      {!isPythonCourse && showConsole && consoleMinimized && !isMobile && (
         <div
           className="h-10 border-t bg-background flex items-center px-4 justify-between cursor-pointer hover:bg-muted/30 transition-colors"
           onClick={() => setConsoleMinimized(false)}
@@ -203,7 +207,7 @@ export default function IdeWorkspace({
       )}
 
       {/* Full-width console toggle when console is not shown */}
-      {!showConsole && !isMobile && (
+      {!isPythonCourse && !showConsole && !isMobile && (
         <div
           className="h-10 border-t bg-background flex items-center px-4 justify-between cursor-pointer hover:bg-muted/30 transition-colors"
           onClick={() => {
@@ -239,8 +243,8 @@ export default function IdeWorkspace({
                 <span>Editor</span>
               </TabsTrigger>
               <TabsTrigger value="preview" className="flex items-center gap-2">
-                <Play size={16} />
-                <span>Preview</span>
+                {isPythonCourse ? <Terminal size={16} /> : <Play size={16} />}
+                <span>{isPythonCourse ? "Console" : "Preview"}</span>
               </TabsTrigger>
               <TabsTrigger value="ai" className="flex items-center gap-2">
                 <Bot size={16} />
@@ -282,11 +286,16 @@ export default function IdeWorkspace({
                   setMainCode={setMainCode}
                   startingCode={getStartingCode()}
                   externalCode={externalCode}
+                  courseLanguage={courseLanguage}
                 />
               </TabsContent>
 
               <TabsContent value="preview" className="h-full m-0 p-0">
-                <IdePreview mainCode={mainCode} />
+                {isPythonCourse ? (
+                  <IdeConsole code={mainCode} courseLanguage={courseLanguage} />
+                ) : (
+                  <IdePreview mainCode={mainCode} />
+                )}
               </TabsContent>
 
               <TabsContent value="ai" className="h-full m-0 p-0">
@@ -302,7 +311,9 @@ export default function IdeWorkspace({
         ) : (
           <ResizablePanelGroup direction="vertical" className="h-full min-w-0">
             <ResizablePanel
-              defaultSize={showConsole && !consoleMinimized ? 70 : 100}
+              defaultSize={
+                !isPythonCourse && showConsole && !consoleMinimized ? 70 : 100
+              }
               minSize={40}
             >
               <ResizablePanelGroup
@@ -385,6 +396,7 @@ export default function IdeWorkspace({
                         setMainCode={setMainCode}
                         startingCode={getStartingCode()}
                         externalCode={externalCode}
+                        courseLanguage={courseLanguage}
                       />
                     </div>
                   </div>
@@ -398,7 +410,14 @@ export default function IdeWorkspace({
                       minSize={15}
                       className="min-w-0 overflow-hidden"
                     >
-                      <IdePreview mainCode={mainCode} />
+                      {isPythonCourse ? (
+                        <IdeConsole
+                          code={mainCode}
+                          courseLanguage={courseLanguage}
+                        />
+                      ) : (
+                        <IdePreview mainCode={mainCode} />
+                      )}
                     </ResizablePanel>
                   </>
                 )}
@@ -423,7 +442,7 @@ export default function IdeWorkspace({
               </ResizablePanelGroup>
             </ResizablePanel>
 
-            {showConsole && !consoleMinimized && (
+            {!isPythonCourse && showConsole && !consoleMinimized && (
               <>
                 <ResizableHandle withHandle />
                 <ResizablePanel
@@ -433,6 +452,7 @@ export default function IdeWorkspace({
                 >
                   <IdeConsole
                     code={mainCode}
+                    courseLanguage={courseLanguage}
                     onMinimize={() => setConsoleMinimized(true)}
                   />
                 </ResizablePanel>

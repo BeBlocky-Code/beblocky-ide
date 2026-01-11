@@ -18,6 +18,7 @@ const AceEditor = dynamic(
     await import("ace-builds/src-noconflict/mode-html");
     await import("ace-builds/src-noconflict/mode-css");
     await import("ace-builds/src-noconflict/mode-javascript");
+    await import("ace-builds/src-noconflict/mode-python");
 
     // Import themes
     await import("ace-builds/src-noconflict/theme-dracula");
@@ -42,16 +43,19 @@ interface CodeState {
   htmlCode: string;
   cssCode: string;
   jsCode: string;
+  pythonCode: string;
 }
 
 export default function IdeEditor({
   setMainCode,
   startingCode = "",
   externalCode,
+  courseLanguage = "web",
 }: {
   setMainCode: (code: string) => void;
   startingCode?: string;
   externalCode?: string | null;
+  courseLanguage?: string;
 }) {
   const { settings } = useSettings();
   const { theme } = useTheme();
@@ -61,36 +65,50 @@ export default function IdeEditor({
     htmlCode: "",
     cssCode: "",
     jsCode: "",
+    pythonCode: "",
   });
   const initializedRef = useRef(false);
+
+  const normalizedCourseLanguage = (courseLanguage || "web").toLowerCase();
+  const isPythonCourse = normalizedCourseLanguage === "python";
 
   // Initialize with starting code if provided
   useEffect(() => {
     if (startingCode && !initializedRef.current) {
       try {
-        setCode(extractCodeSections(startingCode));
+        setCode(
+          isPythonCourse
+            ? extractPythonCode(startingCode)
+            : extractCodeSections(startingCode)
+        );
         initializedRef.current = true;
       } catch (error) {
         console.error("Error parsing starting code:", error);
       }
     }
-  }, [startingCode]);
+  }, [startingCode, isPythonCourse]);
 
   // Load external code when provided (e.g., "Load My Code" action)
   useEffect(() => {
     if (!externalCode) return;
 
     try {
-      setCode(extractCodeSections(externalCode));
+      setCode(
+        isPythonCourse
+          ? extractPythonCode(externalCode)
+          : extractCodeSections(externalCode)
+      );
     } catch (error) {
       console.error("Error parsing external code:", error);
     }
-  }, [externalCode]);
+  }, [externalCode, isPythonCourse]);
 
   // Update the main code whenever any of the code sections change
   useEffect(() => {
-    setMainCode(generateHtmlTemplate(code));
-  }, [code, setMainCode]);
+    setMainCode(
+      isPythonCourse ? code.pythonCode || "" : generateHtmlTemplate(code)
+    );
+  }, [code, setMainCode, isPythonCourse]);
 
   const handleCodeChange = (value: string, language: keyof CodeState) => {
     setCode((prev) => ({
@@ -112,7 +130,7 @@ export default function IdeEditor({
       <div className="border-b flex items-center justify-between p-2 bg-muted/30">
         <h3 className="text-sm font-medium">Code Editor</h3>
 
-        {!isVerticalLayout && (
+        {!isVerticalLayout && !isPythonCourse && (
           <Tabs
             value={activeTab}
             onValueChange={setActiveTab}
@@ -147,7 +165,36 @@ export default function IdeEditor({
           isVerticalLayout ? "flex flex-col" : ""
         }`}
       >
-        {isVerticalLayout ? (
+        {isPythonCourse ? (
+          <div className="flex-1 min-h-0 flex flex-col">
+            <div className="bg-[#1e1e1e] text-white text-xs px-3 py-1">
+              main.py
+            </div>
+            <div className="flex-1 min-h-0">
+              <AceEditor
+                mode="python"
+                theme={editorTheme}
+                onChange={(value) => handleCodeChange(value, "pythonCode")}
+                value={code.pythonCode}
+                name="python-editor"
+                width="100%"
+                height="100%"
+                fontSize={settings.fontSize || 14}
+                showPrintMargin={false}
+                showGutter={true}
+                highlightActiveLine={true}
+                setOptions={{
+                  enableBasicAutocompletion: true,
+                  enableLiveAutocompletion: true,
+                  enableSnippets: true,
+                  showLineNumbers: true,
+                  tabSize: 4,
+                  useWorker: false,
+                }}
+              />
+            </div>
+          </div>
+        ) : isVerticalLayout ? (
           // Vertical layout - all editors stacked
           <>
             <div className="flex-1 min-h-[33%] border-b">
@@ -369,5 +416,16 @@ function extractCodeSections(source: string): CodeState {
     htmlCode: htmlMatch ? htmlMatch[1].trim() : "",
     cssCode: cssMatch ? cssMatch[1].trim() : "",
     jsCode: jsMatch ? jsMatch[1].trim() : "",
+    pythonCode: "",
+  };
+}
+
+function extractPythonCode(source: string): CodeState {
+  // Preserve whatever we receive as raw python; keep web sections empty.
+  return {
+    htmlCode: "",
+    cssCode: "",
+    jsCode: "",
+    pythonCode: source || "",
   };
 }

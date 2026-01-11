@@ -45,6 +45,7 @@ export default function LearnPage() {
   const { toast } = useToast();
 
   const [mainCode, setMainCode] = useState<string>("");
+  const [courseLanguage, setCourseLanguage] = useState<string>("web");
   const [currentLayout, setCurrentLayout] = useState<string>("standard");
   const [currentLessonId, setCurrentLessonId] = useState<string>("");
   const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
@@ -127,6 +128,24 @@ export default function LearnPage() {
         if (courseData) {
           setCurrentCourseTitle(courseData.courseTitle);
           setAllLessons((courseData.lessons as unknown as ILesson[]) || []);
+
+          // Course programming language: use `courseLanguage` as source of truth.
+          // (Some datasets may also include `language`; we only fall back to it if needed.)
+          const languageCandidate = String(
+            (courseData as any)?.courseLanguage ||
+              (courseData as any)?.language ||
+              "web"
+          ).toLowerCase();
+          const normalizedProgrammingLanguage = [
+            "python",
+            "javascript",
+            "typescript",
+            "html",
+            "web",
+          ].includes(languageCandidate)
+            ? languageCandidate
+            : "web";
+          setCourseLanguage(normalizedProgrammingLanguage);
 
           if (courseData.lessons && courseData.lessons.length > 0) {
             // Default to first lesson if no progress exists
@@ -705,6 +724,7 @@ export default function LearnPage() {
                   <IdeWorkspace
                     slides={currentSlides}
                     courseId={courseId}
+                    courseLanguage={courseLanguage}
                     mainCode={mainCode}
                     setMainCode={setMainCode}
                     lessons={allLessons}
