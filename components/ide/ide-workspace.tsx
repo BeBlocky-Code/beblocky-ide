@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "./context/theme-provider";
 import {
   ResizablePanelGroup,
@@ -30,6 +31,7 @@ import type { Slide } from "@/lib/mock-data";
 import { ILesson } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import { progressApi } from "@/lib/api/progress";
+import { queryKeys } from "@/lib/query-keys";
 
 export default function IdeWorkspace({
   slides,
@@ -66,6 +68,7 @@ export default function IdeWorkspace({
   const isMobile = useMediaQuery("(max-width: 1000px)");
   const normalizedCourseLanguage = (courseLanguage || "web").toLowerCase();
   const isPythonCourse = normalizedCourseLanguage === "python";
+  const isHtmlCourse = normalizedCourseLanguage === "html";
   const [activeTab, setActiveTab] = useState("editor");
   const [showConsole, setShowConsole] = useState(false);
   const [consoleMinimized, setConsoleMinimized] = useState(true);
@@ -74,6 +77,18 @@ export default function IdeWorkspace({
   const [externalCode, setExternalCode] = useState<string | null>(null);
   const [isLoadingSavedCode, setIsLoadingSavedCode] = useState(false);
   const { toast } = useToast();
+
+  const progressQuery = useQuery({
+    queryKey: queryKeys.progress.byStudentAndCourse(
+      studentId ?? "",
+      courseId
+    ),
+    queryFn: () =>
+      progressApi.getByStudentAndCourse(studentId!, courseId),
+    enabled:
+      !!studentId && !!courseId && studentId !== "guest",
+    staleTime: 60 * 1000,
+  });
 
   // Default layout configuration
   const getLayoutSizes = () => {
@@ -139,10 +154,14 @@ export default function IdeWorkspace({
     setIsLoadingSavedCode(true);
 
     try {
-      const progress = await progressApi.getByStudentAndCourse(
-        studentId,
-        courseId
-      );
+      const { data: progress } = await progressQuery.refetch();
+      if (!progress) {
+        toast({
+          title: "No saved code",
+          description: "We couldn't find any saved code for this lesson yet.",
+        });
+        return;
+      }
 
       const lessonCode =
         (progress as any)?.lessonCode?.[currentLessonId]?.code ||
@@ -169,8 +188,8 @@ export default function IdeWorkspace({
           description: "We couldn't find any saved code for this lesson yet.",
         });
       }
-    } catch (error) {
-      console.error("Failed to load saved code:", error);
+    } catch (err) {
+      console.error("Failed to load saved code:", err);
       toast({
         title: "Load failed",
         description: "We couldn't load your saved code. Please try again.",
@@ -183,8 +202,8 @@ export default function IdeWorkspace({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Minimized console tab */}
-      {!isPythonCourse && showConsole && consoleMinimized && !isMobile && (
+      {/* Minimized console tab (hidden for HTML; HTML uses Preview only) */}
+      {!isPythonCourse && !isHtmlCourse && showConsole && consoleMinimized && !isMobile && (
         <div
           className="h-10 border-t bg-background flex items-center px-4 justify-between cursor-pointer hover:bg-muted/30 transition-colors"
           onClick={() => setConsoleMinimized(false)}
@@ -206,8 +225,8 @@ export default function IdeWorkspace({
         </div>
       )}
 
-      {/* Full-width console toggle when console is not shown */}
-      {!isPythonCourse && !showConsole && !isMobile && (
+      {/* Full-width console toggle when console is not shown (hidden for HTML) */}
+      {!isPythonCourse && !isHtmlCourse && !showConsole && !isMobile && (
         <div
           className="h-10 border-t bg-background flex items-center px-4 justify-between cursor-pointer hover:bg-muted/30 transition-colors"
           onClick={() => {
@@ -444,7 +463,7 @@ export default function IdeWorkspace({
               </ResizablePanelGroup>
             </ResizablePanel>
 
-            {!isPythonCourse && showConsole && !consoleMinimized && (
+            {!isPythonCourse && !isHtmlCourse && showConsole && !consoleMinimized && (
               <>
                 <ResizableHandle withHandle />
                 <ResizablePanel

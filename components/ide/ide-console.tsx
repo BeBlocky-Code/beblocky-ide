@@ -43,6 +43,8 @@ export default function IdeConsole({
   const pyodideRef = useRef<any>(null);
   const pyodideLoadingRef = useRef<Promise<any> | null>(null);
   const pyodideScriptLoadingRef = useRef<Promise<void> | null>(null);
+  const runCodeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runCodeIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const normalizedCourseLanguage = (courseLanguage || "web").toLowerCase();
   const isPythonCourse = normalizedCourseLanguage === "python";
@@ -163,6 +165,21 @@ export default function IdeConsole({
     [addLog, clearLogs, ensurePyodide]
   );
 
+  // Clear runCode timeout and remove sandbox iframe on unmount
+  useEffect(() => {
+    return () => {
+      if (runCodeTimeoutRef.current) {
+        clearTimeout(runCodeTimeoutRef.current);
+        runCodeTimeoutRef.current = null;
+      }
+      const iframe = runCodeIframeRef.current;
+      if (iframe && document.body.contains(iframe)) {
+        document.body.removeChild(iframe);
+        runCodeIframeRef.current = null;
+      }
+    };
+  }, []);
+
   // Run code and capture console output
   const runCode = useCallback(() => {
     clearLogs();
@@ -172,11 +189,18 @@ export default function IdeConsole({
       return;
     }
 
+    if (runCodeTimeoutRef.current) {
+      clearTimeout(runCodeTimeoutRef.current);
+      runCodeTimeoutRef.current = null;
+    }
+    runCodeIframeRef.current = null;
+
     try {
       // Create a sandbox iframe to run the code
       const iframe = document.createElement("iframe");
       iframe.style.display = "none";
       document.body.appendChild(iframe);
+      runCodeIframeRef.current = iframe;
 
       // Override console methods to capture logs
       if (iframe.contentWindow) {
@@ -219,7 +243,9 @@ export default function IdeConsole({
         }
 
         // Clean up iframe after a delay
-        setTimeout(() => {
+        runCodeTimeoutRef.current = setTimeout(() => {
+          runCodeTimeoutRef.current = null;
+          runCodeIframeRef.current = null;
           if (document.body.contains(iframe)) {
             document.body.removeChild(iframe);
           }

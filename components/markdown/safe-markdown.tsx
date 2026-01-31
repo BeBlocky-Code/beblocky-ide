@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useRef, useEffect } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -100,6 +100,16 @@ function HeadingWithCopy({
 }) {
   const Tag = (`h${level}` as unknown) as React.ElementType;
   const [copied, setCopied] = useState(false);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+        copyTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <Tag id={id} className="group">
@@ -115,8 +125,15 @@ function HeadingWithCopy({
             navigator.clipboard
               .writeText(url)
               .then(() => {
+                if (copyTimeoutRef.current) {
+                  clearTimeout(copyTimeoutRef.current);
+                  copyTimeoutRef.current = null;
+                }
                 setCopied(true);
-                window.setTimeout(() => setCopied(false), 1200);
+                copyTimeoutRef.current = window.setTimeout(() => {
+                  copyTimeoutRef.current = null;
+                  setCopied(false);
+                }, 1200);
               })
               .catch(() => {});
           }}
@@ -233,10 +250,15 @@ export function SafeMarkdown({ content, theme = "light", className }: SafeMarkdo
           return <blockquote key={idx}>{renderBlocks(t.tokens || [])}</blockquote>;
         case "list": {
           const Tag = t.ordered ? "ol" : "ul";
+          const listClassName = t.ordered
+            ? "list-decimal pl-6 list-outside my-4 [&>li]:my-1"
+            : "list-disc pl-6 list-outside my-4 [&>li]:my-1";
           return (
-            <Tag key={idx}>
+            <Tag key={idx} className={listClassName}>
               {(t.items || []).map((item: AnyToken, itemIdx: number) => (
-                <li key={itemIdx}>{renderBlocks(item.tokens || [])}</li>
+                <li key={itemIdx} className="pl-1">
+                  {renderBlocks(item.tokens || [])}
+                </li>
               ))}
             </Tag>
           );

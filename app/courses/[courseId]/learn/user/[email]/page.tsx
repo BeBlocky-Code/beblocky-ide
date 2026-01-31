@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import IdeToolbar from "@/components/ide/ide-toolbar";
 import IdeWorkspace from "@/components/ide/ide-workspace";
@@ -22,6 +23,7 @@ import { IStudentProgress, IProgress } from "@/types/progress";
 import IdeLoadingSkeleton from "@/components/ide/ide-loading";
 import { studentApi } from "@/lib/api/student";
 import { userApi } from "@/lib/api/user";
+import { queryKeys } from "@/lib/query-keys";
 
 interface UserData {
   _id: string;
@@ -52,8 +54,6 @@ export default function LearnPage() {
   const [currentSlides, setCurrentSlides] = useState<ISlide[]>([]);
   const [allLessons, setAllLessons] = useState<ILesson[]>([]);
   const [currentCourseTitle, setCurrentCourseTitle] = useState<string>("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [userProgress, setUserProgress] = useState<IStudentProgress | null>(
@@ -62,9 +62,42 @@ export default function LearnPage() {
   const [showAiAssistant, setShowAiAssistant] = useState(false);
   const [studentId, setStudentId] = useState<string | null>(null);
   const [timeSpent, setTimeSpent] = useState<number>(0);
-  const [timeTrackerInterval, setTimeTrackerInterval] =
-    useState<NodeJS.Timeout | null>(null);
   const [lastSavedCode, setLastSavedCode] = useState<string>("");
+  const userProgressRef = useRef(userProgress);
+  userProgressRef.current = userProgress;
+  const isMountedRef = useRef(true);
+  const layoutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasInitializedFromQueries = useRef(false);
+  const queryClient = useQueryClient();
+
+  // Cached queries
+  const courseQuery = useQuery({
+    queryKey: queryKeys.courses.withContent(courseId),
+    queryFn: () => getCourseWithContent(courseId),
+    enabled: !!courseId && !!email,
+    staleTime: 5 * 60 * 1000,
+  });
+  const userQuery = useQuery({
+    queryKey: queryKeys.users.byEmail(email),
+    queryFn: () => userApi.getByEmail(email),
+    enabled: !!email,
+  });
+  const studentQuery = useQuery({
+    queryKey: queryKeys.students.byEmail(userQuery.data?.email ?? ""),
+    queryFn: () => studentApi.getByEmail(userQuery.data!.email),
+    enabled: !!userQuery.data?.email,
+  });
+  const resolvedStudentId = studentQuery.data?._id?.toString() ?? null;
+  const progressQuery = useQuery({
+    queryKey: queryKeys.progress.byStudentAndCourse(
+      resolvedStudentId ?? "",
+      courseId
+    ),
+    queryFn: () =>
+      progressApi.getByStudentAndCourse(resolvedStudentId!, courseId),
+    enabled: !!resolvedStudentId && !!courseId,
+    staleTime: 60 * 1000,
+  });
 
   const sortSlidesByOrder = (slides: ISlide[]) => {
     const toOrder = (s: any) => {
@@ -94,14 +127,23 @@ export default function LearnPage() {
     const interval = setInterval(() => {
       setTimeSpent((prev) => {
         const newTime = prev + 1; // Increment by 1 minute
+        const progress = userProgressRef.current;
 
         // Update progress time every minute
-        if (userProgress && userProgress._id && newTime % 60 === 0) {
-          // Update every 60 seconds
+        if (progress?._id && newTime % 60 === 0) {
           progressApi
-            .updateTimeSpent(userProgress._id, {
+            .updateTimeSpent(progress._id, {
               minutes: 1,
               lastAccessed: new Date().toISOString(),
+            })
+            .then(() => {
+              if (resolvedStudentId && courseId)
+                queryClient.invalidateQueries({
+                  queryKey: queryKeys.progress.byStudentAndCourse(
+                    resolvedStudentId,
+                    courseId
+                  ),
+                });
             })
             .catch((error) => {
               console.warn(
@@ -115,205 +157,46 @@ export default function LearnPage() {
       });
     }, 60000); // Update every minute
 
-    setTimeTrackerInterval(interval);
-
     return () => {
       console.log("⏰ [TIME TRACKER] Stopping time tracking...");
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
-  }, [userProgress?._id]);
-
-  // Cleanup time tracker on unmount
-  useEffect(() => {
-    return () => {
-      if (timeTrackerInterval) {
-        clearInterval(timeTrackerInterval);
-        console.log("⏰ [TIME TRACKER] Cleaned up on unmount");
-      }
+      clearInterval(interval);
     };
   }, []);
 
-  // Fetch course data and user data from API
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  // Derive loading and error from queries
+  const isLoadingInitial =
+    (courseQuery.isLoading && !!courseId) ||
+    (userQuery.isLoading && !!email) ||
+    (!!userQuery.data?.email && studentQuery.isLoading) ||
+    (!!resolvedStudentId && progressQuery.isLoading);
+  const hasError =
+    courseQuery.isError || (userQuery.isError && !userQuery.data);
+  const errorMessage =
+    courseQuery.error != null
+      ? "Failed to load course."
+      : userQuery.error != null
+        ? "Failed to load user."
+        : null;
 
-        // Fetch course data
-        const courseData = await getCourseWithContent(courseId);
-        console.log("🔍 [FETCH DATA] Course data:", courseData);
-
-        if (courseData) {
-          setCurrentCourseTitle(courseData.courseTitle);
-          setAllLessons((courseData.lessons as unknown as ILesson[]) || []);
-
-          // Course programming language: use `courseLanguage` as source of truth.
-          // (Some datasets may also include `language`; we only fall back to it if needed.)
-          const languageCandidate = String(
-            (courseData as any)?.courseLanguage ||
-              (courseData as any)?.language ||
-              "web"
-          ).toLowerCase();
-          const normalizedProgrammingLanguage = [
-            "python",
-            "javascript",
-            "typescript",
-            "html",
-            "web",
-          ].includes(languageCandidate)
-            ? languageCandidate
-            : "web";
-          setCourseLanguage(normalizedProgrammingLanguage);
-
-          if (courseData.lessons && courseData.lessons.length > 0) {
-            // Default to first lesson if no progress exists
-            let targetLesson = courseData.lessons[0];
-            let targetSlideIndex = 0;
-            const initialSlides =
-              (courseData.lessons[0].slides as unknown as ISlide[]) || [];
-            const sortedInitialSlides = sortSlidesByOrder(initialSlides);
-            let targetCode = sortedInitialSlides?.[0]?.startingCode || "";
-
-            setCurrentLessonId(targetLesson._id?.toString() || "");
-            setCurrentSlides(sortedInitialSlides);
-            console.log(
-              "🔍 [FETCH DATA] Current slides (sorted):",
-              sortedInitialSlides.map((s: any) => ({
-                id: s?._id,
-                title: s?.title,
-                order: s?.order,
-              }))
-            );
-            setCurrentSlideIndex(targetSlideIndex);
-            setMainCode(targetCode);
-            setLastSavedCode(targetCode);
-          }
+  // Sync state from query data and derive userData
+  const courseData = courseQuery.data;
+  const progressData = progressQuery.data as IStudentProgress | undefined;
+  const derivedUserData: UserData | null =
+    userQuery.data && studentQuery.data
+      ? {
+          ...userQuery.data,
+          _id: resolvedStudentId || "guest",
+          id: resolvedStudentId || "guest",
+          initials: generateInitials(
+            userQuery.data.name || userQuery.data.email,
+            userQuery.data.email
+          ),
+          role: userQuery.data.role || UserRole.STUDENT,
+          progress: {},
+          preferences: {},
         }
-
-        // Fetch user data based on email
-        try {
-          const userData = await userApi.getByEmail(email);
-          const studentData = await studentApi.getByEmail(userData?.email);
-          const studentId = studentData?._id?.toString();
-
-          // Update student activity when page loads
-          if (userData && userData._id) {
-            try {
-              await studentApi.updateActivity(studentId, {
-                lastCodingActivity: new Date().toISOString(),
-              });
-              console.log(
-                "✅ [ACTIVITY] Student activity updated on page load"
-              );
-            } catch (activityError) {
-              console.warn(
-                "⚠️ [ACTIVITY] Failed to update student activity:",
-                activityError
-              );
-            }
-          }
-
-          // Generate initials for the user
-          const initials = generateInitials(
-            userData.name || userData.email,
-            userData.email
-          );
-
-          setStudentId(studentId ?? null);
-
-          const userWithData: UserData = {
-            ...userData,
-            _id: studentId || "guest",
-            id: studentId || "guest",
-            initials,
-            role: userData.role || UserRole.STUDENT, // Default to student if no role
-            progress: {},
-            preferences: {},
-          };
-
-          setUserData(userWithData);
-
-          // If user is a student, fetch their progress for this course
-          if (userWithData.role === UserRole.STUDENT) {
-            try {
-              const progress = await progressApi.getByStudentAndCourse(
-                userWithData.id,
-                courseId
-              );
-              setUserProgress(progress);
-
-              // Initialize time tracking with existing time spent
-              if (progress.timeSpent) {
-                setTimeSpent(progress.timeSpent * 60); // Convert minutes to seconds for internal tracking
-              }
-
-              console.log("✅ Found progress:", progress);
-
-              if (progress.progress && progress.progress.length > 0) {
-                // Load the last accessed lesson and slide from progress
-                const lastProgress =
-                  progress.progress[progress.progress.length - 1];
-                if (lastProgress.lessonId) {
-                  const lessonId = lastProgress.lessonId.toString();
-                  const targetLesson = courseData.lessons?.find(
-                    (lesson) => lesson._id?.toString() === lessonId
-                  );
-
-                  if (targetLesson) {
-                    const slides =
-                      (targetLesson.slides as unknown as ISlide[]) || [];
-                    const sortedSlides = sortSlidesByOrder(slides);
-                    setCurrentLessonId(lessonId);
-                    setCurrentSlides(sortedSlides);
-
-                    // Find the slide index based on slideId if available
-                    if (lastProgress.slideId) {
-                      const slideIndex = sortedSlides.findIndex(
-                        (slide) =>
-                          slide._id?.toString() ===
-                          lastProgress.slideId?.toString()
-                      );
-                      if (slideIndex !== -1) {
-                        setCurrentSlideIndex(slideIndex);
-                        const loadedCode =
-                          lastProgress.code ||
-                          sortedSlides[slideIndex]?.startingCode ||
-                          "";
-                        setMainCode(loadedCode);
-                        setLastSavedCode(loadedCode);
-                      } else {
-                        setCurrentSlideIndex(0);
-                        const loadedCode =
-                          lastProgress.code ||
-                          sortedSlides[0]?.startingCode ||
-                          "";
-                        setMainCode(loadedCode);
-                        setLastSavedCode(loadedCode);
-                      }
-                    } else {
-                      setCurrentSlideIndex(0);
-                      const loadedCode =
-                        lastProgress.code ||
-                        sortedSlides[0]?.startingCode ||
-                        "";
-                      setMainCode(loadedCode);
-                      setLastSavedCode(loadedCode);
-                    }
-                  }
-                }
-              }
-            } catch (progressError) {
-              console.warn("Could not fetch user progress:", progressError);
-              // Continue without progress data
-            }
-          }
-        } catch (error) {
-          console.warn("Could not fetch user data, using guest mode:", error);
-          // Fallback to guest user data if API fails
-          setUserData({
+      : userQuery.isError || (userQuery.data == null && !userQuery.isLoading)
+        ? {
             id: "guest",
             name: "",
             email: email,
@@ -325,68 +208,212 @@ export default function LearnPage() {
             createdAt: new Date(),
             updatedAt: new Date(),
             _id: "guest",
-          });
+          }
+        : null;
+
+  // Sync initial UI state from queries (once per courseId+email)
+  useEffect(() => {
+    if (
+      !courseId ||
+      !email ||
+      !courseData ||
+      hasInitializedFromQueries.current
+    )
+      return;
+    const userReady =
+      derivedUserData != null || (userQuery.isError && !userQuery.isLoading);
+    const progressReady =
+      !resolvedStudentId ||
+      progressQuery.isSuccess ||
+      progressQuery.isError;
+    if (!userReady || !progressReady) return;
+
+    hasInitializedFromQueries.current = true;
+
+    setCurrentCourseTitle(courseData.courseTitle ?? "");
+    setAllLessons((courseData.lessons as unknown as ILesson[]) || []);
+    const languageCandidate = String(
+      (courseData as any)?.courseLanguage ||
+        (courseData as any)?.language ||
+        "web"
+    ).toLowerCase();
+    setCourseLanguage(
+      ["python", "javascript", "typescript", "html", "web"].includes(
+        languageCandidate
+      )
+        ? languageCandidate
+        : "web"
+    );
+
+    if (courseData.lessons && courseData.lessons.length > 0) {
+      let targetLesson = courseData.lessons[0];
+      let targetSlideIndex = 0;
+      const initialSlides =
+        (courseData.lessons[0].slides as unknown as ISlide[]) || [];
+      const sortedInitialSlides = sortSlidesByOrder(initialSlides);
+      let targetCode = sortedInitialSlides?.[0]?.startingCode || "";
+
+      if (
+        progressData?.progress &&
+        progressData.progress.length > 0
+      ) {
+        const lastProgress =
+          progressData.progress[progressData.progress.length - 1];
+        if (lastProgress.lessonId) {
+          const lessonId = lastProgress.lessonId.toString();
+          const targetLessonFound = courseData.lessons?.find(
+            (l: any) => l._id?.toString() === lessonId
+          );
+          if (targetLessonFound) {
+            const slides =
+              (targetLessonFound.slides as unknown as ISlide[]) || [];
+            const sortedSlides = sortSlidesByOrder(slides);
+            targetLesson = targetLessonFound;
+            setCurrentLessonId(lessonId);
+            setCurrentSlides(sortedSlides);
+            if (lastProgress.slideId) {
+              const slideIndex = sortedSlides.findIndex(
+                (s) => s._id?.toString() === lastProgress.slideId?.toString()
+              );
+              if (slideIndex !== -1) {
+                targetSlideIndex = slideIndex;
+                targetCode =
+                  (lastProgress as any).code ||
+                  sortedSlides[slideIndex]?.startingCode ||
+                  "";
+              } else {
+                targetCode =
+                  (lastProgress as any).code ||
+                  sortedSlides[0]?.startingCode ||
+                  "";
+              }
+            } else {
+              targetCode =
+                (lastProgress as any).code ||
+                sortedSlides[0]?.startingCode ||
+                "";
+            }
+          }
         }
-      } catch (err) {
-        console.error("Error fetching data:", err);
-        setError("Failed to load data. Please try again.");
-      } finally {
-        setLoading(false);
+      } else {
+        setCurrentLessonId(targetLesson._id?.toString() || "");
+        setCurrentSlides(sortedInitialSlides);
+      }
+
+      setCurrentSlideIndex(targetSlideIndex);
+      setMainCode(targetCode);
+      setLastSavedCode(targetCode);
+    }
+
+    if (derivedUserData) setUserData(derivedUserData);
+    setStudentId(resolvedStudentId);
+    if (progressData) {
+      setUserProgress(progressData);
+      if (progressData.timeSpent)
+        setTimeSpent(progressData.timeSpent * 60);
+    }
+  }, [
+    courseId,
+    email,
+    courseData,
+    progressData,
+    derivedUserData,
+    resolvedStudentId,
+    userQuery.isError,
+    userQuery.isLoading,
+    progressQuery.isSuccess,
+    progressQuery.isError,
+  ]);
+
+  // Reset init flag when course or email changes so we re-sync
+  useEffect(() => {
+    hasInitializedFromQueries.current = false;
+  }, [courseId, email]);
+
+  // Keep userProgress in sync when progress query refetches (e.g. after mutation)
+  useEffect(() => {
+    if (progressQuery.data) setUserProgress(progressQuery.data as IStudentProgress);
+  }, [progressQuery.data]);
+
+  // Update student activity on load (fire-and-forget)
+  useEffect(() => {
+    if (
+      !derivedUserData ||
+      derivedUserData.id === "guest" ||
+      !resolvedStudentId
+    )
+      return;
+    studentApi
+      .updateActivity(resolvedStudentId, {
+        lastCodingActivity: new Date().toISOString(),
+      })
+      .catch(() => {});
+  }, [derivedUserData?.id, resolvedStudentId]);
+
+  const invalidateProgress = () => {
+    if (resolvedStudentId && courseId)
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.progress.byStudentAndCourse(
+          resolvedStudentId,
+          courseId
+        ),
+      });
+  };
+
+  const progressUpdateTimeSpentMutation = useMutation({
+    mutationFn: (args: {
+      id: string;
+      data: { slideId?: string; timeSpent?: number; lastAccessed?: string };
+    }) => progressApi.updateTimeSpent(args.id, args.data),
+    onSuccess: invalidateProgress,
+  });
+  const progressCreateMutation = useMutation({
+    mutationFn: (data: Parameters<typeof progressApi.create>[0]) =>
+      progressApi.create(data),
+    onSuccess: invalidateProgress,
+  });
+
+  // Clear layout-change timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (layoutTimeoutRef.current) {
+        clearTimeout(layoutTimeoutRef.current);
+        layoutTimeoutRef.current = null;
       }
     };
-
-    if (courseId && email) {
-      fetchData();
-    }
-  }, [courseId, email]);
+  }, []);
 
   // Handle slide changes
   const handleSlideChange = async (slideIndex: number) => {
     setCurrentSlideIndex(slideIndex);
 
-    // Update progress for the current slide (only for students)
     if (userData?.id !== "guest" && userData?.role === UserRole.STUDENT) {
-      try {
-        const currentSlide = currentSlides[slideIndex];
-        if (currentSlide) {
-          // Check if progress exists for this lesson
-          const existingProgress = userProgress?.progress?.find(
-            (p: { lessonId?: { toString: () => string } }) =>
-              p.lessonId?.toString() === currentLessonId
-          );
+      const currentSlide = currentSlides[slideIndex];
+      if (!currentSlide) return;
+      const existingProgress = userProgress?.progress?.find(
+        (p: { lessonId?: { toString: () => string } }) =>
+          p.lessonId?.toString() === currentLessonId
+      );
 
-          if (existingProgress) {
-            // Update existing progress with new slide
-            await progressApi.updateTimeSpent(
-              existingProgress._id?.toString() || "",
-              {
-                slideId: currentSlide._id?.toString(),
-                timeSpent: existingProgress.timeSpent || 0,
-                lastAccessed: new Date().toISOString(),
-              }
-            );
-          } else {
-            // Create new progress for this lesson and slide
-            await progressApi.create({
-              studentId: userData.id,
-              courseId: courseId,
-              lessonId: currentLessonId,
-              slideId: currentSlide._id?.toString(),
-              code: mainCode,
-              timeSpent: 0,
-              completed: false,
-            });
-          }
-
-          // Refresh progress data
-          const updatedProgress = await progressApi.getByStudentAndCourse(
-            userData.id,
-            courseId
-          );
-          setUserProgress(updatedProgress);
-        }
-      } catch (error) {
-        console.error("Failed to update progress for slide:", error);
+      if (existingProgress) {
+        progressUpdateTimeSpentMutation.mutate({
+          id: existingProgress._id?.toString() || "",
+          data: {
+            slideId: currentSlide._id?.toString(),
+            timeSpent: existingProgress.timeSpent || 0,
+            lastAccessed: new Date().toISOString(),
+          },
+        });
+      } else {
+        progressCreateMutation.mutate({
+          studentId: userData.id,
+          courseId: courseId,
+          lessonId: currentLessonId,
+          slideId: currentSlide._id?.toString(),
+          code: mainCode,
+          timeSpent: 0,
+          completed: false,
+        });
       }
     }
   };
@@ -403,51 +430,36 @@ export default function LearnPage() {
       const slides = (selectedLesson.slides as unknown as ISlide[]) || [];
       const sortedSlides = sortSlidesByOrder(slides);
       setCurrentSlides(sortedSlides);
-      setCurrentSlideIndex(0); // Reset to first slide when changing lessons
+      setCurrentSlideIndex(0);
       const startingCode = sortedSlides[0]?.startingCode || "";
       setMainCode(startingCode);
       setLastSavedCode(startingCode);
 
-      // Update progress for the selected lesson (only for students)
       if (userData?.id !== "guest" && userData?.role === UserRole.STUDENT) {
-        try {
-          // Check if progress exists for this lesson
-          const existingProgress = userProgress?.progress?.find(
-            (p: { lessonId?: { toString: () => string } }) =>
-              p.lessonId?.toString() === lessonId
-          );
+        const existingProgress = userProgress?.progress?.find(
+          (p: { lessonId?: { toString: () => string } }) =>
+            p.lessonId?.toString() === lessonId
+        );
 
-          if (existingProgress) {
-            // Update existing progress with new lastAccessed time
-            await progressApi.updateTimeSpent(
-              existingProgress._id?.toString() || "",
-              {
-                timeSpent: existingProgress.timeSpent || 0,
-                lastAccessed: new Date().toISOString(),
-              }
-            );
-          } else {
-            // Create new progress for this lesson
-            await progressApi.create({
-              studentId: userData.id,
-              courseId: courseId,
-              lessonId: lessonId,
-              code:
-                (selectedLesson.slides as unknown as ISlide[])?.[0]
-                  ?.startingCode || "",
-              timeSpent: 0,
-              completed: false,
-            });
-
-            // Refresh progress data
-            const updatedProgress = await progressApi.getByStudentAndCourse(
-              userData.id,
-              courseId
-            );
-            setUserProgress(updatedProgress);
-          }
-        } catch (error) {
-          console.error("Failed to update progress for lesson:", error);
+        if (existingProgress) {
+          progressUpdateTimeSpentMutation.mutate({
+            id: existingProgress._id?.toString() || "",
+            data: {
+              timeSpent: existingProgress.timeSpent || 0,
+              lastAccessed: new Date().toISOString(),
+            },
+          });
+        } else {
+          progressCreateMutation.mutate({
+            studentId: userData.id,
+            courseId: courseId,
+            lessonId: lessonId,
+            code:
+              (selectedLesson.slides as unknown as ISlide[])?.[0]
+                ?.startingCode || "",
+            timeSpent: 0,
+            completed: false,
+          });
         }
       }
     }
@@ -526,41 +538,12 @@ export default function LearnPage() {
     localStorage.setItem(saveKey, mainCode);
     console.log("💾 [SAVE API] Saved to localStorage:", saveKey);
 
-    let studentId: string | undefined;
+    const studentId = resolvedStudentId ?? undefined;
+    const progress: IProgress | null = userProgress as unknown as IProgress | null;
 
     try {
-      // Step 1: Get existing progress record for student-course pair
-      console.log("🔍 [SAVE API] Fetching existing progress record...");
-      let progress: IProgress | null = null;
-
-      try {
-        console.log("🔍 [SAVE API] Getting user data for email:", email);
-
-        // Get user data by email
-        const userData = await userApi.getByEmail(email);
-        console.log("✅ [SAVE API] Found user:", userData?._id);
-
-        // For now, use user ID as student ID (assuming 1:1 relationship)
-        // In a real implementation, you'd look up the student record
-        const studentData = await studentApi.getByEmail(userData?.email);
-        studentId = studentData?._id; // Extract just the student ID
-        console.log("✅ [SAVE API] Found student ID:", studentId);
-
-        // Try to get existing progress first (guaranteed to exist for students)
-        if (!studentId) {
-          throw new Error("Student ID not found");
-        }
-        const existingProgress = await progressApi.getByStudentAndCourse(
-          studentId,
-          courseId
-        );
-        progress = existingProgress as unknown as IProgress;
-        console.log("✅ [SAVE API] Found existing progress:", progress?._id);
-      } catch (getError) {
-        console.log(
-          "❌ [SAVE API] No existing progress found, will create new one"
-        );
-        progress = null;
+      if (!studentId) {
+        throw new Error("Student ID not found");
       }
 
       if (progress && progress._id) {
@@ -615,6 +598,7 @@ export default function LearnPage() {
 
         // Update last saved code to track unsaved changes
         setLastSavedCode(mainCode);
+        invalidateProgress();
       } else {
         throw new Error("Failed to get or create progress record");
       }
@@ -702,15 +686,15 @@ export default function LearnPage() {
     setShowAiAssistant(!showAiAssistant);
   };
 
-  if (loading) {
+  if (isLoadingInitial) {
     return <IdeLoadingSkeleton />;
   }
 
-  if (error) {
+  if (hasError && errorMessage) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
-          <p className="text-destructive mb-4">{error}</p>
+          <p className="text-destructive mb-4">{errorMessage}</p>
           <button
             onClick={() => window.location.reload()}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-md"
@@ -741,12 +725,17 @@ export default function LearnPage() {
                   mainCode={mainCode}
                   onChangeLayout={(layout) => {
                     setCurrentLayout(layout);
+                    if (layoutTimeoutRef.current) {
+                      clearTimeout(layoutTimeoutRef.current);
+                      layoutTimeoutRef.current = null;
+                    }
                     const workspace = document.querySelector(
                       '[data-ide-workspace="true"]'
                     );
                     if (workspace) {
                       workspace.classList.add("layout-change");
-                      setTimeout(() => {
+                      layoutTimeoutRef.current = setTimeout(() => {
+                        layoutTimeoutRef.current = null;
                         workspace.classList.remove("layout-change");
                       }, 10);
                     }

@@ -49,7 +49,7 @@ export default function IdeMarkdownPreview({
         prose-h3:text-xl prose-h3:font-medium
         prose-p:leading-7 prose-p:text-slate-700 dark:prose-p:text-slate-300
         prose-blockquote:border-l-4 prose-blockquote:border-primary/50 prose-blockquote:bg-primary/5 prose-blockquote:rounded-r-lg prose-blockquote:py-2 prose-blockquote:px-4
-        prose-ul:my-6 prose-li:my-2
+        prose-ul:list-disc prose-ul:pl-6 prose-ul:list-outside prose-ul:my-6 prose-ol:list-decimal prose-ol:pl-6 prose-ol:list-outside prose-ol:my-6 prose-li:my-2 prose-li:pl-1
         prose-a:text-primary prose-a:font-medium prose-a:no-underline hover:prose-a:underline
         prose-strong:text-slate-900 dark:prose-strong:text-white prose-strong:font-semibold
         prose-code:bg-slate-100 dark:prose-code:bg-slate-800 prose-code:px-2 prose-code:py-1 prose-code:rounded prose-code:text-sm prose-code:font-medium prose-code:before:content-none prose-code:after:content-none

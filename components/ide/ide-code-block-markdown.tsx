@@ -32,6 +32,7 @@ export function ModernCodeBlock({ code, language, filename }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const codeRef = useRef<HTMLElement>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (codeRef.current) {
@@ -39,11 +40,27 @@ export function ModernCodeBlock({ code, language, filename }: CodeBlockProps) {
     }
   }, [code, language]);
 
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+        copyTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   const copyToClipboard = async () => {
     try {
       await navigator.clipboard.writeText(code);
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+        copyTimeoutRef.current = null;
+      }
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      copyTimeoutRef.current = setTimeout(() => {
+        copyTimeoutRef.current = null;
+        setCopied(false);
+      }, 2000);
     } catch (err) {
       console.error("Copy failed:", err);
     }

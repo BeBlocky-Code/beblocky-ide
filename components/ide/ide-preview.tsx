@@ -7,7 +7,17 @@ import { Maximize, RefreshCw } from "lucide-react";
 
 export default function IdePreview({ mainCode }: { mainCode: string }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const updateIframeContent = useCallback(() => {
     const iframe = iframeRef.current;
@@ -28,9 +38,16 @@ export default function IdePreview({ mainCode }: { mainCode: string }) {
   }, [updateIframeContent]);
 
   const refreshPreview = () => {
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
+      refreshTimeoutRef.current = null;
+    }
     setIsRefreshing(true);
     updateIframeContent();
-    setTimeout(() => setIsRefreshing(false), 500);
+    refreshTimeoutRef.current = setTimeout(() => {
+      refreshTimeoutRef.current = null;
+      setIsRefreshing(false);
+    }, 500);
   };
 
   const openInNewTab = () => {

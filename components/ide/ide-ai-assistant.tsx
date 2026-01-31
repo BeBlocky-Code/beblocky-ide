@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -19,6 +20,7 @@ import IdeChatInput from "./ide-chat-input";
 import IdeCodeAnalysis from "./ide-code-analysis";
 import IdeChatTab from "./ide-chat-tab";
 import { progressApi } from "@/lib/api/progress";
+import { queryKeys } from "@/lib/query-keys";
 
 type Conversation = {
   _id: string;
@@ -41,7 +43,6 @@ export default function IdeAiAssistant({
 }) {
   const [activeTab, setActiveTab] = useState("chat");
   const [messages, setMessages] = useState<IChatMessage[]>([]);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversationId, setSelectedConversationId] =
     useState<string>("");
   const [inputValue, setInputValue] = useState("");
@@ -50,89 +51,84 @@ export default function IdeAiAssistant({
   const [currentAnalysis, setCurrentAnalysis] = useState<ICodeAnalysis | null>(
     null
   );
-  const [analysisHistory, setAnalysisHistory] = useState<ICodeAnalysis[]>([]);
   const [isThinking, setIsThinking] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [isConversationSidebarOpen, setIsConversationSidebarOpen] =
-    useState(true); // Show by default on desktop
-  const [hasLoadedConversations, setHasLoadedConversations] = useState(false);
+    useState(true);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
 
-  // Load conversations and analysis history when component mounts
+  const isMountedRef = useRef(true);
+  const pendingTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const queryClient = useQueryClient();
+
+  const conversationsQuery = useQuery({
+    queryKey: queryKeys.ai.conversations(studentId),
+    queryFn: () => aiConversationApi.getByStudent(studentId),
+    enabled: !!studentId && studentId !== "guest",
+    staleTime: 60 * 1000,
+  });
+  const analysisHistoryQuery = useQuery({
+    queryKey: queryKeys.ai.analysisHistory(studentId),
+    queryFn: () => codeAnalysisApi.getByStudent(studentId),
+    enabled: !!studentId && studentId !== "guest",
+    staleTime: 60 * 1000,
+  });
+
+  const conversations: Conversation[] = useMemo(() => {
+    const list = conversationsQuery.data ?? [];
+    return list
+      .filter(
+        (conv): conv is IAiConversation & { _id: string } =>
+          !!conv &&
+          !!conv._id &&
+          typeof conv._id === "string" &&
+          conv._id.length > 0
+      )
+      .map((conv) => ({
+        _id: conv._id!,
+        title:
+          conv.title ||
+          (conv.messages && conv.messages.length > 0
+            ? "New Conversation"
+            : "Untitled Conversation"),
+        lastActivity: new Date(conv.lastActivity).toISOString(),
+        courseId: conv.courseId.toString(),
+        messages: conv.messages,
+      }));
+  }, [conversationsQuery.data]);
+
+  const analysisHistory = analysisHistoryQuery.data ?? [];
+
+  // Clear timeouts and set unmounted on cleanup
   useEffect(() => {
-    console.log(
-      "Component mounted, loading conversations for student:",
-      studentId
-    );
-    loadConversations();
-    loadAnalysisHistory();
-  }, [studentId, courseId]);
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      pendingTimeoutsRef.current.forEach(clearTimeout);
+      pendingTimeoutsRef.current = [];
+    };
+  }, []);
 
-  // Load conversations when AI Chat tab is selected
+  // Sync messages when selecting a conversation from the cached list
   useEffect(() => {
-    if (activeTab === "chat" && !hasLoadedConversations) {
-      console.log("AI Chat tab selected, loading conversations");
-      loadConversations();
-      setHasLoadedConversations(true);
+    if (conversations.length === 0) {
+      setSelectedConversationId("");
+      setMessages([]);
+      return;
     }
-  }, [activeTab, hasLoadedConversations]);
-
-  // Debug effect to monitor state changes
-  useEffect(() => {
-    // Debugging console log removed as requested.
-  }, [conversations, selectedConversationId, inputValue]);
-
-  // Load conversations for the current student
-  const loadConversations = async () => {
-    try {
-      setIsLoading(true);
-      const conversationList = await aiConversationApi.getByStudent(studentId);
-
-      const conversations: Conversation[] = conversationList
-        .filter(
-          (conv): conv is IAiConversation & { _id: string } =>
-            !!conv &&
-            !!conv._id &&
-            typeof conv._id === "string" &&
-            conv._id.length > 0
-        ) // Filter out conversations without valid _id
-        .map((conv) => ({
-          _id: conv._id!,
-          title:
-            conv.title ||
-            (conv.messages && conv.messages.length > 0
-              ? "New Conversation"
-              : "Untitled Conversation"),
-          lastActivity: new Date(conv.lastActivity).toISOString(),
-          courseId: conv.courseId.toString(),
-          messages: conv.messages,
-        }));
-
-      console.log("Filtered conversations:", conversations);
-      setConversations(conversations);
-
-      // Don't auto-select conversation - let user choose
-      if (conversations.length === 0) {
-        console.log("No conversations found");
-        setSelectedConversationId("");
-        setMessages([]);
-      }
-    } catch (error) {
-      console.error("Failed to load conversations:", error);
-    } finally {
-      setIsLoading(false);
+    if (selectedConversationId) {
+      const conv = conversations.find((c) => c._id === selectedConversationId);
+      if (conv?.messages) setMessages(conv.messages);
     }
-  };
+  }, [conversations, selectedConversationId]);
 
-  // Load code analysis history for the current student
-  const loadAnalysisHistory = async () => {
-    try {
-      const history = await codeAnalysisApi.getByStudent(studentId);
-      setAnalysisHistory(history);
-    } catch (error) {
-      console.error("Failed to load analysis history:", error);
-    }
-  };
+  const invalidateConversations = () =>
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.ai.conversations(studentId),
+    });
+  const invalidateAnalysisHistory = () =>
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.ai.analysisHistory(studentId),
+    });
 
   // Create new conversation
   // Handle new chat button - only clear messages, don't create conversation
@@ -143,46 +139,37 @@ export default function IdeAiAssistant({
     console.log("Cleared messages for new chat");
   };
 
-  const createNewConversation = async () => {
-    if (isCreatingConversation) {
-      console.log("Conversation creation already in progress, skipping...");
-      return;
-    }
-
-    try {
-      setIsCreatingConversation(true);
-      setIsLoading(true);
-
-      const newConversation = await aiConversationApi.create({
+  const createConversationMutation = useMutation({
+    mutationFn: () =>
+      aiConversationApi.create({
         courseId,
         studentId,
-        title: "", // Will be generated by AI when first message is sent
+        title: "",
         lessonId: lessonId,
         initialMessage: inputValue,
-      });
-
+      }),
+    onSuccess: (newConversation) => {
+      invalidateConversations();
       const conversation = {
         _id: newConversation._id || `temp-${Date.now()}`,
-        title: "New Conversation", // Temporary title until AI generates one
+        title: "New Conversation",
         lastActivity: new Date(newConversation.lastActivity).toISOString(),
         courseId: newConversation.courseId.toString(),
         messages: newConversation.messages || [],
       };
-
-      setConversations((prev) => [...prev, conversation]);
       setSelectedConversationId(conversation._id);
       setMessages(conversation.messages);
-
-      // Close sidebar on mobile after selection
       setIsConversationSidebarOpen(false);
-
-      console.log("New conversation created:", conversation._id);
-    } catch (error) {
-      console.error("Failed to create conversation:", error);
-    } finally {
-      setIsLoading(false);
+    },
+    onSettled: () => {
       setIsCreatingConversation(false);
-    }
+    },
+  });
+
+  const createNewConversation = async () => {
+    if (isCreatingConversation) return;
+    setIsCreatingConversation(true);
+    createConversationMutation.mutate();
   };
 
   const handleSendMessage = async () => {
@@ -219,24 +206,17 @@ export default function IdeAiAssistant({
         }
       );
 
-      // Update messages with the response
       setMessages(updatedConversation.messages);
-
-      // Update conversation title if this is the first message and title needs to be generated
-      if (messages.length === 0 && updatedConversation.title) {
-        setConversations((prev) =>
-          prev.map((conv) =>
-            conv._id === selectedConversationId
-              ? { ...conv, title: updatedConversation.title! }
-              : conv
-          )
-        );
-      }
+      invalidateConversations();
     } catch (error) {
       console.error("Failed to send message:", error);
 
       // Fallback to mock response if API fails
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
+        pendingTimeoutsRef.current = pendingTimeoutsRef.current.filter(
+          (t) => t !== timeoutId
+        );
+        if (!isMountedRef.current) return;
         const aiResponse: IChatMessage = {
           role: "assistant",
           content: generateAIResponse(),
@@ -244,6 +224,7 @@ export default function IdeAiAssistant({
         };
         setMessages((prev) => [...prev, aiResponse]);
       }, 1500);
+      pendingTimeoutsRef.current.push(timeoutId);
     } finally {
       setIsThinking(false);
     }
@@ -315,13 +296,16 @@ export default function IdeAiAssistant({
       setCurrentAnalysis(analysis);
       setCodeFeedback(analysis.feedback);
 
-      // Refresh analysis history to include the new analysis
-      await loadAnalysisHistory();
+      invalidateAnalysisHistory();
     } catch (error) {
       console.error("Code analysis failed:", error);
 
       // Fallback to mock analysis if API fails
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
+        pendingTimeoutsRef.current = pendingTimeoutsRef.current.filter(
+          (t) => t !== timeoutId
+        );
+        if (!isMountedRef.current) return;
         setCodeFeedback([
           {
             type: "success",
@@ -342,6 +326,7 @@ export default function IdeAiAssistant({
           },
         ]);
       }, 1500);
+      pendingTimeoutsRef.current.push(timeoutId);
     } finally {
       setIsThinking(false);
       setIsAnalyzing(false);
@@ -419,7 +404,7 @@ export default function IdeAiAssistant({
               <IdeConversationSidebar
                 conversations={conversations}
                 selectedConversationId={selectedConversationId}
-                isLoading={isLoading}
+                isLoading={conversationsQuery.isLoading}
                 onConversationSelect={(conversationId) => {
                   const conversation = conversations.find(
                     (c) => c._id === conversationId

@@ -8,7 +8,6 @@ import {
   ChevronRight,
   CheckCircle,
   Circle,
-  Lock,
   Menu,
   X,
 } from "lucide-react";
@@ -20,13 +19,12 @@ import {
   DrawerClose,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { cn } from "@/lib/utils";
 
 type LessonProps = {
   _id?: string;
   title: string;
   description?: string;
-  status?: "completed" | "in-progress" | "locked";
+  status?: "completed" | "in-progress";
 };
 
 export default function IdeLessonNavigator({
@@ -38,12 +36,12 @@ export default function IdeLessonNavigator({
   onSelectLesson: (lessonId: string) => void;
   lessons: LessonProps[];
 }) {
-  // Add status to lessons if not provided
+  // All lessons are accessible; status is optional (no locking)
   const processedLessons = lessons.map((lesson, index) => ({
     ...lesson,
     status:
-      lesson.status ||
-      (index === 0 ? "in-progress" : index < 3 ? "completed" : "locked"),
+      lesson.status ??
+      (lesson._id === currentLessonId ? "in-progress" : "completed"),
   }));
 
   // Calculate overall progress
@@ -54,15 +52,13 @@ export default function IdeLessonNavigator({
   const progressPercentage =
     totalLessons > 0 ? (completedLessons / totalLessons) * 100 : 0;
 
-  // Get status icon
+  // Get status icon (all lessons are accessible; no locked state)
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "completed":
         return <CheckCircle size={16} className="text-green-500" />;
       case "in-progress":
         return <Circle size={16} className="text-blue-500 fill-blue-500/30" />;
-      case "locked":
-        return <Lock size={16} className="text-muted-foreground" />;
       default:
         return <Circle size={16} className="text-muted-foreground" />;
     }
@@ -83,12 +79,9 @@ export default function IdeLessonNavigator({
             <Button
               key={lesson._id || lesson.title}
               variant={lesson._id === currentLessonId ? "secondary" : "ghost"}
-              className={cn(
-                "w-full justify-start text-sm h-auto py-3",
-                lesson.status === "locked" ? "opacity-60" : ""
-              )}
+              className="w-full justify-start text-sm h-auto py-3"
               onClick={() => {
-                if (lesson.status !== "locked" && lesson._id) {
+                if (lesson._id) {
                   onSelectLesson(lesson._id);
                   // Close the drawer after selection
                   const closeButton = document.querySelector(
@@ -99,7 +92,6 @@ export default function IdeLessonNavigator({
                   }
                 }
               }}
-              disabled={lesson.status === "locked"}
             >
               <span className="mr-2">
                 {getStatusIcon(lesson.status || "locked")}
