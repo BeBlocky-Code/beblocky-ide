@@ -1,0 +1,60 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Build outputs
+.next
+out
+build
+dist
+
+# Testing
+coverage
+.nyc_output
+
+# Environment files (copy manually or use Docker secrets)
+.env
+.env.local
+.env.development
+.env.test
+.env.production.local
+
+# IDE and editors
+.idea
+.vscode
+*.swp
+*.swo
+.cursor
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Documentation
+*.md
+docs
+LICENSE
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+logs
+*.log
+
+# Misc
+*.tsbuildinfo
+next-env.d.ts
+.eslintcache
+.turbo
