@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -70,6 +70,10 @@ export default function LearnPage() {
   const hasInitializedFromQueries = useRef(false);
   const queryClient = useQueryClient();
 
+  // Refs to avoid stale closures in interval callback
+  const resolvedStudentIdRef = useRef<string | null>(null);
+  const courseIdRef = useRef<string>(courseId);
+
   // Cached queries
   const courseQuery = useQuery({
     queryKey: queryKeys.courses.withContent(courseId),
@@ -88,6 +92,16 @@ export default function LearnPage() {
     enabled: !!userQuery.data?.email,
   });
   const resolvedStudentId = studentQuery.data?._id?.toString() ?? null;
+
+  // Keep refs in sync with current values to avoid stale closures in interval
+  useEffect(() => {
+    resolvedStudentIdRef.current = resolvedStudentId;
+  }, [resolvedStudentId]);
+
+  useEffect(() => {
+    courseIdRef.current = courseId;
+  }, [courseId]);
+
   const progressQuery = useQuery({
     queryKey: queryKeys.progress.byStudentAndCourse(
       resolvedStudentId ?? "",
@@ -122,14 +136,12 @@ export default function LearnPage() {
 
   // Start time tracking when component mounts
   useEffect(() => {
-    console.log("⏰ [TIME TRACKER] Starting time tracking...");
-
     const interval = setInterval(() => {
       setTimeSpent((prev) => {
         const newTime = prev + 1; // Increment by 1 minute
         const progress = userProgressRef.current;
 
-        // Update progress time every minute
+        // Update progress time every hour (60 minutes)
         if (progress?._id && newTime % 60 === 0) {
           progressApi
             .updateTimeSpent(progress._id, {
@@ -137,20 +149,19 @@ export default function LearnPage() {
               lastAccessed: new Date().toISOString(),
             })
             .then(() => {
-              if (resolvedStudentId && courseId)
+              // Use refs to get current values, avoiding stale closures
+              const currentStudentId = resolvedStudentIdRef.current;
+              const currentCourseId = courseIdRef.current;
+              if (currentStudentId && currentCourseId) {
                 queryClient.invalidateQueries({
                   queryKey: queryKeys.progress.byStudentAndCourse(
-                    resolvedStudentId,
-                    courseId
+                    currentStudentId,
+                    currentCourseId
                   ),
                 });
+              }
             })
-            .catch((error) => {
-              console.warn(
-                "⚠️ [TIME TRACKER] Failed to update time spent:",
-                error
-              );
-            });
+            .catch(() => {});
         }
 
         return newTime;
@@ -158,10 +169,9 @@ export default function LearnPage() {
     }, 60000); // Update every minute
 
     return () => {
-      console.log("⏰ [TIME TRACKER] Stopping time tracking...");
       clearInterval(interval);
     };
-  }, []);
+  }, [queryClient]);
 
   // Derive loading and error from queries
   const isLoadingInitial =
@@ -175,57 +185,64 @@ export default function LearnPage() {
     courseQuery.error != null
       ? "Failed to load course."
       : userQuery.error != null
-        ? "Failed to load user."
-        : null;
+      ? "Failed to load user."
+      : null;
 
   // Sync state from query data and derive userData
   const courseData = courseQuery.data;
   const progressData = progressQuery.data as IStudentProgress | undefined;
-  const derivedUserData: UserData | null =
-    userQuery.data && studentQuery.data
-      ? {
-          ...userQuery.data,
-          _id: resolvedStudentId || "guest",
-          id: resolvedStudentId || "guest",
-          initials: generateInitials(
-            userQuery.data.name || userQuery.data.email,
-            userQuery.data.email
-          ),
-          role: userQuery.data.role || UserRole.STUDENT,
-          progress: {},
-          preferences: {},
-        }
-      : userQuery.isError || (userQuery.data == null && !userQuery.isLoading)
-        ? {
-            id: "guest",
-            name: "",
-            email: email,
-            initials: "GU",
-            role: UserRole.STUDENT,
-            progress: {},
-            preferences: {},
-            emailVerified: false,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            _id: "guest",
-          }
-        : null;
+
+  // Memoize derivedUserData to prevent new object reference on each render
+  // This prevents infinite re-render loops in useEffects that depend on it
+  const derivedUserData = useMemo<UserData | null>(() => {
+    if (userQuery.data && studentQuery.data) {
+      return {
+        ...userQuery.data,
+        _id: resolvedStudentId || "guest",
+        id: resolvedStudentId || "guest",
+        initials: generateInitials(
+          userQuery.data.name || userQuery.data.email,
+          userQuery.data.email
+        ),
+        role: userQuery.data.role || UserRole.STUDENT,
+        progress: {},
+        preferences: {},
+      };
+    }
+    if (userQuery.isError || (userQuery.data == null && !userQuery.isLoading)) {
+      return {
+        id: "guest",
+        name: "",
+        email: email,
+        initials: "GU",
+        role: UserRole.STUDENT,
+        progress: {},
+        preferences: {},
+        emailVerified: false,
+        // Avoid render-time non-determinism to prevent hydration mismatch
+        createdAt: new Date(0),
+        updatedAt: new Date(0),
+        _id: "guest",
+      };
+    }
+    return null;
+  }, [
+    userQuery.data,
+    studentQuery.data,
+    resolvedStudentId,
+    userQuery.isError,
+    userQuery.isLoading,
+    email,
+  ]);
 
   // Sync initial UI state from queries (once per courseId+email)
   useEffect(() => {
-    if (
-      !courseId ||
-      !email ||
-      !courseData ||
-      hasInitializedFromQueries.current
-    )
+    if (!courseId || !email || !courseData || hasInitializedFromQueries.current)
       return;
     const userReady =
       derivedUserData != null || (userQuery.isError && !userQuery.isLoading);
     const progressReady =
-      !resolvedStudentId ||
-      progressQuery.isSuccess ||
-      progressQuery.isError;
+      !resolvedStudentId || progressQuery.isSuccess || progressQuery.isError;
     if (!userReady || !progressReady) return;
 
     hasInitializedFromQueries.current = true;
@@ -253,10 +270,7 @@ export default function LearnPage() {
       const sortedInitialSlides = sortSlidesByOrder(initialSlides);
       let targetCode = sortedInitialSlides?.[0]?.startingCode || "";
 
-      if (
-        progressData?.progress &&
-        progressData.progress.length > 0
-      ) {
+      if (progressData?.progress && progressData.progress.length > 0) {
         const lastProgress =
           progressData.progress[progressData.progress.length - 1];
         if (lastProgress.lessonId) {
@@ -309,15 +323,14 @@ export default function LearnPage() {
     setStudentId(resolvedStudentId);
     if (progressData) {
       setUserProgress(progressData);
-      if (progressData.timeSpent)
-        setTimeSpent(progressData.timeSpent * 60);
+      if (progressData.timeSpent) setTimeSpent(progressData.timeSpent * 60);
     }
   }, [
     courseId,
     email,
     courseData,
     progressData,
-    derivedUserData,
+    derivedUserData?.id, // Use stable id instead of full object to prevent infinite re-renders
     resolvedStudentId,
     userQuery.isError,
     userQuery.isLoading,
@@ -332,7 +345,8 @@ export default function LearnPage() {
 
   // Keep userProgress in sync when progress query refetches (e.g. after mutation)
   useEffect(() => {
-    if (progressQuery.data) setUserProgress(progressQuery.data as IStudentProgress);
+    if (progressQuery.data)
+      setUserProgress(progressQuery.data as IStudentProgress);
   }, [progressQuery.data]);
 
   // Update student activity on load (fire-and-forget)
@@ -529,17 +543,12 @@ export default function LearnPage() {
 
   // Handle saving code with progress API integration
   const handleSaveCode = async (): Promise<void> => {
-    console.log("🚀 [SAVE API] Starting save process...");
-    console.log("📋 [SAVE API] Course ID:", courseId);
-    console.log("📋 [SAVE API] Lesson ID:", currentLessonId);
-    console.log("📋 [SAVE API] Code length:", mainCode.length);
-
     const saveKey = `code-${courseId}-${currentLessonId}`;
     localStorage.setItem(saveKey, mainCode);
-    console.log("💾 [SAVE API] Saved to localStorage:", saveKey);
 
     const studentId = resolvedStudentId ?? undefined;
-    const progress: IProgress | null = userProgress as unknown as IProgress | null;
+    const progress: IProgress | null =
+      userProgress as unknown as IProgress | null;
 
     try {
       if (!studentId) {
@@ -548,12 +557,9 @@ export default function LearnPage() {
 
       if (progress && progress._id) {
         // Step 3: Detect programming language
-        console.log("🔍 [SAVE API] Detecting programming language...");
         const detectedLanguage = detectLanguage(mainCode);
-        console.log("🎯 [SAVE API] Detected language:", detectedLanguage);
 
         // Step 3.5: Update progress completion status
-        console.log("📈 [SAVE API] Updating progress completion status...");
         try {
           // Mark lesson as completed and update time spent
           await progressApi.completeLesson(progress._id, {
@@ -567,28 +573,16 @@ export default function LearnPage() {
               minutes: Math.floor(timeSpent / 60),
             });
           }
-
-          console.log("✅ [SAVE API] Progress and time updated successfully");
         } catch (progressError) {
-          console.warn(
-            "⚠️ [SAVE API] Failed to update progress:",
-            progressError
-          );
           // Continue with saving code even if progress update fails
         }
 
         // Step 4: Save code to progress API
-        console.log("💾 [SAVE API] Saving code to progress API...");
         await progressApi.saveCode(progress._id, {
           lessonId: currentLessonId,
           language: detectedLanguage,
           code: mainCode,
         });
-
-        console.log("✅ [SAVE API] Code saved to progress successfully");
-        console.log("📋 [SAVE API] Progress ID:", progress._id);
-        console.log("📋 [SAVE API] Language:", detectedLanguage);
-        console.log("📋 [SAVE API] Lesson ID:", currentLessonId);
 
         // Show success feedback
         toast({
@@ -603,20 +597,6 @@ export default function LearnPage() {
         throw new Error("Failed to get or create progress record");
       }
     } catch (error) {
-      console.error(
-        "❌ [SAVE API] Failed to save code to progress backend:",
-        error
-      );
-      console.error("📋 [SAVE API] Error details:", {
-        message: error instanceof Error ? error.message : "Unknown error",
-        stack: error instanceof Error ? error.stack : "No stack trace",
-        courseId,
-        currentLessonId,
-        email,
-        studentId: studentId || "not found",
-        hasProgress: !!userProgress,
-      });
-
       // Show error feedback but don't fail the entire save operation
       toast({
         title: "Progress Sync Failed",
@@ -630,14 +610,11 @@ export default function LearnPage() {
 
     // Update last saved code even if API save failed (localStorage save succeeded)
     setLastSavedCode(mainCode);
-
-    console.log("🏁 [SAVE API] Save process completed");
   };
 
   // Handle format code (placeholder for future implementation)
   const handleFormatCode = () => {
     // TODO: Implement code formatting
-    console.log("Format code functionality to be implemented");
   };
 
   // Track unsaved changes and warn user before closing tab
