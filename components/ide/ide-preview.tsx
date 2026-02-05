@@ -10,6 +10,22 @@ export default function IdePreview({ mainCode }: { mainCode: string }) {
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  const buildSrcDoc = useCallback(() => {
+    // Keep this minimal and deterministic.
+    // We intentionally avoid allow-same-origin to prevent sandbox escape warnings.
+    return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Preview</title>
+  </head>
+  <body>
+${mainCode ?? ""}
+  </body>
+</html>`;
+  }, [mainCode]);
+
   useEffect(() => {
     return () => {
       if (refreshTimeoutRef.current) {
@@ -22,15 +38,8 @@ export default function IdePreview({ mainCode }: { mainCode: string }) {
   const updateIframeContent = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
-
-    const iframeDocument =
-      iframe.contentDocument || iframe.contentWindow?.document;
-    if (iframeDocument) {
-      iframeDocument.open();
-      iframeDocument.write(mainCode);
-      iframeDocument.close();
-    }
-  }, [mainCode]);
+    iframe.srcdoc = buildSrcDoc();
+  }, [buildSrcDoc]);
 
   // Update the iframe content when the code changes
   useEffect(() => {
@@ -96,7 +105,7 @@ export default function IdePreview({ mainCode }: { mainCode: string }) {
           ref={iframeRef}
           className="w-full h-full border-none"
           title="Code Preview"
-          sandbox="allow-scripts allow-same-origin"
+          sandbox="allow-scripts"
         ></iframe>
       </CardContent>
     </Card>

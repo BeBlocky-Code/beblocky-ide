@@ -47,7 +47,6 @@ export default function IdeHeader({
 
   // Check if user should see coins (only student roles)
   const shouldShowCoins = userData?.role === UserRole.STUDENT;
-  console.log("studentId and shouldShowCoins", studentId, shouldShowCoins);
 
   // Load coding streak
   useEffect(() => {
@@ -58,11 +57,9 @@ export default function IdeHeader({
           // Handle both number response and object response
           const streakValue =
             typeof data === "number" ? data : (data as any)?.streak ?? 0;
-          console.log("Streak value received:", streakValue);
           setStreak(streakValue || 0);
         })
-        .catch((error) => {
-          console.error("Failed to load coding streak:", error);
+        .catch(() => {
           setStreak(0);
         });
     }
@@ -91,7 +88,9 @@ export default function IdeHeader({
             alt="Logo"
             width={100}
             height={100}
-            // className="h-20 w-auto"
+            className="h-10 w-auto"
+            style={{ width: "auto", height: "auto" }}
+            priority
           />
         </a>
         {courseTitle && (

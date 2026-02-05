@@ -136,7 +136,6 @@ export default function IdeAiAssistant({
     setSelectedConversationId("");
     setMessages([]);
     setIsConversationSidebarOpen(false);
-    console.log("Cleared messages for new chat");
   };
 
   const createConversationMutation = useMutation({
@@ -180,7 +179,6 @@ export default function IdeAiAssistant({
       await createNewConversation();
       // Don't proceed if conversation creation failed
       if (!selectedConversationId) {
-        console.log("Failed to create conversation, cannot send message");
         return;
       }
     }
@@ -239,7 +237,6 @@ export default function IdeAiAssistant({
     try {
       // Step a: Find code analysis related to the student
       const existingAnalyses = await codeAnalysisApi.getByStudent(studentId);
-      console.log("Existing analyses for student:", existingAnalyses);
 
       // Filter analyses by current lesson
       const lessonAnalyses = existingAnalyses.filter(
@@ -250,7 +247,6 @@ export default function IdeAiAssistant({
 
       // Step b: If no code-analysis exists, create a new one
       if (lessonAnalyses.length === 0) {
-        console.log("No analysis found for this lesson, creating new one");
         const progressArr = await progressApi.getByStudent(studentId);
         const progressId =
           Array.isArray(progressArr) && progressArr.length > 0
@@ -270,8 +266,6 @@ export default function IdeAiAssistant({
             new Date(b.analysisDate).getTime() -
             new Date(a.analysisDate).getTime()
         )[0];
-
-        console.log("Loading latest analysis:", latestAnalysis._id);
 
         // Load the existing analysis first
         setCurrentAnalysis(latestAnalysis);

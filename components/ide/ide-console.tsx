@@ -45,6 +45,10 @@ export default function IdeConsole({
   const pyodideScriptLoadingRef = useRef<Promise<void> | null>(null);
   const runCodeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const runCodeIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const runCodeMessageHandlerRef = useRef<((e: MessageEvent) => void) | null>(
+    null
+  );
+  const runCodeIdRef = useRef<string | null>(null);
 
   const normalizedCourseLanguage = (courseLanguage || "web").toLowerCase();
   const isPythonCourse = normalizedCourseLanguage === "python";
@@ -89,7 +93,8 @@ export default function IdeConsole({
         script.src = "https://cdn.jsdelivr.net/pyodide/v0.29.1/full/pyodide.js";
         script.async = true;
         script.onload = () => resolve();
-        script.onerror = () => reject(new Error("Failed to load Pyodide script."));
+        script.onerror = () =>
+          reject(new Error("Failed to load Pyodide script."));
         document.head.appendChild(script);
       });
     }
@@ -104,7 +109,9 @@ export default function IdeConsole({
         await ensurePyodideScript();
         const loadPyodide = window.loadPyodide;
         if (typeof loadPyodide !== "function") {
-          throw new Error("Pyodide failed to load (window.loadPyodide missing).");
+          throw new Error(
+            "Pyodide failed to load (window.loadPyodide missing)."
+          );
         }
 
         // indexURL is required when loading from CDN
@@ -172,6 +179,11 @@ export default function IdeConsole({
         clearTimeout(runCodeTimeoutRef.current);
         runCodeTimeoutRef.current = null;
       }
+      if (runCodeMessageHandlerRef.current) {
+        window.removeEventListener("message", runCodeMessageHandlerRef.current);
+        runCodeMessageHandlerRef.current = null;
+      }
+      runCodeIdRef.current = null;
       const iframe = runCodeIframeRef.current;
       if (iframe && document.body.contains(iframe)) {
         document.body.removeChild(iframe);
@@ -193,64 +205,104 @@ export default function IdeConsole({
       clearTimeout(runCodeTimeoutRef.current);
       runCodeTimeoutRef.current = null;
     }
+    if (runCodeMessageHandlerRef.current) {
+      window.removeEventListener("message", runCodeMessageHandlerRef.current);
+      runCodeMessageHandlerRef.current = null;
+    }
     runCodeIframeRef.current = null;
+    runCodeIdRef.current = `${Date.now()}-${Math.random()
+      .toString(16)
+      .slice(2)}`;
 
     try {
       // Create a sandbox iframe to run the code
       const iframe = document.createElement("iframe");
       iframe.style.display = "none";
+      iframe.setAttribute("sandbox", "allow-scripts");
       document.body.appendChild(iframe);
       runCodeIframeRef.current = iframe;
 
-      // Override console methods to capture logs
-      if (iframe.contentWindow) {
-        const contentWindow = iframe.contentWindow as Window & {
-          console: Console;
-        };
-        const originalConsole = contentWindow.console;
+      const runId = runCodeIdRef.current;
+      const handleMessage = (event: MessageEvent) => {
+        const data = (event as any)?.data;
+        if (!data || data.source !== "beblocky-ide-console") return;
+        if (!runId || data.runId !== runId) return;
 
-        contentWindow.console.log = (...args: unknown[]) => {
-          originalConsole.log(...args);
-          addLog(args.map((arg) => formatLogArgument(arg)).join(" "), "info");
-        };
+        const level = String(data.level || "info");
+        const msg =
+          Array.isArray(data.args) && data.args.length
+            ? data.args.join(" ")
+            : "";
 
-        contentWindow.console.error = (...args: unknown[]) => {
-          originalConsole.error(...args);
-          addLog(args.map((arg) => formatLogArgument(arg)).join(" "), "error");
-        };
+        if (level === "error") addLog(msg, "error");
+        else if (level === "warn") addLog(msg, "warning");
+        else addLog(msg, "info");
+      };
+      runCodeMessageHandlerRef.current = handleMessage;
+      window.addEventListener("message", handleMessage);
 
-        contentWindow.console.warn = (...args: unknown[]) => {
-          originalConsole.warn(...args);
-          addLog(
-            args.map((arg) => formatLogArgument(arg)).join(" "),
-            "warning"
-          );
-        };
-
-        contentWindow.console.info = (...args: unknown[]) => {
-          originalConsole.info(...args);
-          addLog(args.map((arg) => formatLogArgument(arg)).join(" "), "info");
-        };
-
-        // Run the code
-        try {
-          const doc = iframe.contentDocument || iframe.contentWindow.document;
-          doc.open();
-          doc.write(code);
-          doc.close();
-        } catch (error) {
-          addLog(`Error running code: ${error}`, "error");
-        }
-
-        // Clean up iframe after a delay
-        runCodeTimeoutRef.current = setTimeout(() => {
-          runCodeTimeoutRef.current = null;
-          runCodeIframeRef.current = null;
-          if (document.body.contains(iframe)) {
-            document.body.removeChild(iframe);
+      const safeCode = String(code ?? "");
+      const srcdoc = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sandbox</title>
+    <script>
+      (function () {
+        const runId = ${JSON.stringify(runId)};
+        function safeSerialize(v) {
+          try {
+            if (typeof v === 'string') return v;
+            return JSON.stringify(v);
+          } catch (_) {
+            try { return String(v); } catch (_) { return '[unserializable]'; }
           }
-        }, 1000);
-      }
+        }
+        function send(level, args) {
+          try {
+            parent.postMessage({ source: 'beblocky-ide-console', runId, level, args: (args || []).map(safeSerialize) }, '*');
+          } catch (_) {}
+        }
+        ['log','info','warn','error'].forEach((level) => {
+          const orig = console[level];
+          console[level] = function () {
+            send(level, Array.from(arguments));
+            if (orig) orig.apply(console, arguments);
+          };
+        });
+        window.addEventListener('error', function (e) {
+          send('error', [e && e.message ? e.message : 'Unknown error']);
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          const reason = e && e.reason ? e.reason : 'Unhandled rejection';
+          send('error', [reason]);
+        });
+      })();
+    </script>
+  </head>
+  <body>
+${safeCode}
+  </body>
+</html>`;
+      iframe.srcdoc = srcdoc;
+
+      // Clean up iframe after a delay
+      runCodeTimeoutRef.current = setTimeout(() => {
+        runCodeTimeoutRef.current = null;
+        runCodeIdRef.current = null;
+        if (runCodeMessageHandlerRef.current) {
+          window.removeEventListener(
+            "message",
+            runCodeMessageHandlerRef.current
+          );
+          runCodeMessageHandlerRef.current = null;
+        }
+        runCodeIframeRef.current = null;
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+      }, 1000);
     } catch (error) {
       addLog(`Error setting up console: ${error}`, "error");
     }
@@ -303,13 +355,8 @@ export default function IdeConsole({
     }
   };
 
-  // Auto-run code when component mounts
-  useEffect(() => {
-    // Auto-run only for web preview (Python should run on explicit action)
-    if (!isPythonCourse && code) {
-      runCode();
-    }
-  }, [code, runCode, isPythonCourse]);
+  // Auto-run disabled to prevent excessive iframe creation and CPU usage
+  // User must click the run button to execute code
 
   return (
     <Card className="h-full flex flex-col border-none rounded-none shadow-none">

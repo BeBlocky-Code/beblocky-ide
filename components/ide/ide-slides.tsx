@@ -63,7 +63,7 @@ export default function IdeSlides({
       const timeDiff = toTime(a) - toTime(b);
       if (timeDiff !== 0) return timeDiff;
       return String(a?._id || a?.id || "").localeCompare(
-        String(b?._id || b?.id || "")
+        String(b?._id || b?.id || ""),
       );
     });
   }, [slides]);
@@ -113,21 +113,6 @@ export default function IdeSlides({
   const progress =
     totalSlides > 0 ? ((currentSlideIndex + 1) / totalSlides) * 100 : 0;
 
-  const currentLessonTitle = useMemo(() => {
-    if (!lessons?.length || !currentLessonId) return "Lesson";
-    const lesson = lessons.find(
-      (l: any) => (l._id ?? l.id)?.toString() === currentLessonId
-    );
-    return lesson?.title ?? "Lesson";
-  }, [lessons, currentLessonId]);
-
-  // If a slide has no starting code, keep the UI on the Content tab.
-  useEffect(() => {
-    if (activeTab === "code" && !currentSlide?.startingCode) {
-      setActiveTab("content");
-    }
-  }, [activeTab, currentSlide?.startingCode]);
-
   const goToNextSlide = () => {
     if (currentSlideIndex < orderedSlides.length - 1) {
       const newIndex = currentSlideIndex + 1;
@@ -143,6 +128,23 @@ export default function IdeSlides({
       onSlideChange?.(newIndex);
     }
   };
+
+  // Extract code blocks from content
+  const extractCodeBlocks = (content: string) => {
+    const codeRegex = /```[\s\S]*?```/g;
+    const matches = [];
+    let match;
+
+    while ((match = codeRegex.exec(content)) !== null) {
+      matches.push(match[0]);
+    }
+
+    return matches;
+  };
+
+  const codeBlocks = currentSlide.content
+    ? extractCodeBlocks(currentSlide.content)
+    : [];
 
   return (
     <Card className="h-full min-w-0 flex flex-col border-none rounded-none shadow-none overflow-hidden">
@@ -185,6 +187,9 @@ export default function IdeSlides({
           </Drawer>
           <div className="text-sm font-medium truncate">Learning Materials</div>
         </div>
+        <div className="text-xs text-muted-foreground">
+          Slide {currentSlideIndex + 1} of {totalSlides || 1}
+        </div>
       </CardHeader>
 
       <Tabs
@@ -192,25 +197,15 @@ export default function IdeSlides({
         onValueChange={setActiveTab}
         className="flex-1 flex flex-col overflow-hidden min-w-0"
       >
-        <TabsList className="px-4 pt-2 justify-between gap-2 flex-shrink-0 flex-wrap">
-          <div className="flex items-center gap-2 min-w-0 order-first">
-            <span className="text-sm font-semibold truncate" title={currentLessonTitle}>
-              {currentLessonTitle}
-            </span>
-            <span className="text-xs text-muted-foreground shrink-0">
-              Slide {currentSlideIndex + 1} of {totalSlides || 1}
-            </span>
-          </div>
-          <div className="flex gap-1">
-            <TabsTrigger value="content" className="text-xs">
-              Content
+        <TabsList className="px-4 pt-2 justify-start flex-shrink-0">
+          <TabsTrigger value="content" className="text-xs">
+            Content
+          </TabsTrigger>
+          {(codeBlocks.length > 0 || currentSlide.startingCode) && (
+            <TabsTrigger value="code" className="text-xs">
+              Code Examples
             </TabsTrigger>
-            {!!currentSlide.startingCode && (
-              <TabsTrigger value="code" className="text-xs">
-                Code Examples
-              </TabsTrigger>
-            )}
-          </div>
+          )}
         </TabsList>
 
         <TabsContent
@@ -247,7 +242,7 @@ export default function IdeSlides({
                           className="h-8 w-8 bg-background/80 backdrop-blur-sm"
                           onClick={() => {
                             navigator.clipboard.writeText(
-                              currentSlide.startingCode || ""
+                              currentSlide.startingCode || "",
                             );
                             if (copyTimeoutRef.current) {
                               clearTimeout(copyTimeoutRef.current);
@@ -275,9 +270,9 @@ export default function IdeSlides({
                 )}
 
                 {/* No Code Message */}
-                {!currentSlide.startingCode && (
+                {!currentSlide.startingCode && codeBlocks.length === 0 && (
                   <div className="text-center text-muted-foreground py-8">
-                    No starting code in this slide.
+                    No code examples in this slide.
                   </div>
                 )}
               </div>
@@ -287,31 +282,27 @@ export default function IdeSlides({
       </Tabs>
 
       <div className="p-4 border-t flex-shrink-0 min-w-0">
-        <div className="flex items-center gap-3 w-full">
+        <div className="flex items-center justify-between mb-2">
           <Button
             variant="outline"
             size="sm"
             onClick={goToPreviousSlide}
             disabled={currentSlideIndex === 0}
-            className="shrink-0"
           >
             <ChevronLeft size={16} className="mr-1" /> Previous
           </Button>
-          <Progress
-            value={progress}
-            indicatorColor="bg-green-500"
-            className="h-2 flex-1 min-w-0"
-          />
+
           <Button
             variant="outline"
             size="sm"
             onClick={goToNextSlide}
-            disabled={currentSlideIndex === orderedSlides.length - 1}
-            className="shrink-0"
+            disabled={currentSlideIndex === slides.length - 1}
           >
             Next <ChevronRight size={16} className="ml-1" />
           </Button>
         </div>
+
+        <Progress value={progress} className="h-1" />
       </div>
     </Card>
   );

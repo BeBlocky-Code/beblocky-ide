@@ -68,7 +68,6 @@ export default function IdeWorkspace({
   const isMobile = useMediaQuery("(max-width: 1000px)");
   const normalizedCourseLanguage = (courseLanguage || "web").toLowerCase();
   const isPythonCourse = normalizedCourseLanguage === "python";
-  const isHtmlCourse = normalizedCourseLanguage === "html";
   const [activeTab, setActiveTab] = useState("editor");
   const [showConsole, setShowConsole] = useState(false);
   const [consoleMinimized, setConsoleMinimized] = useState(true);
@@ -202,8 +201,8 @@ export default function IdeWorkspace({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Minimized console tab (hidden for HTML; HTML uses Preview only) */}
-      {!isPythonCourse && !isHtmlCourse && showConsole && consoleMinimized && !isMobile && (
+      {/* Minimized console tab */}
+      {!isPythonCourse && showConsole && consoleMinimized && !isMobile && (
         <div
           className="h-10 border-t bg-background flex items-center px-4 justify-between cursor-pointer hover:bg-muted/30 transition-colors"
           onClick={() => setConsoleMinimized(false)}
@@ -225,8 +224,8 @@ export default function IdeWorkspace({
         </div>
       )}
 
-      {/* Full-width console toggle when console is not shown (hidden for HTML) */}
-      {!isPythonCourse && !isHtmlCourse && !showConsole && !isMobile && (
+      {/* Full-width console toggle when console is not shown */}
+      {!isPythonCourse && !showConsole && !isMobile && (
         <div
           className="h-10 border-t bg-background flex items-center px-4 justify-between cursor-pointer hover:bg-muted/30 transition-colors"
           onClick={() => {
@@ -463,7 +462,7 @@ export default function IdeWorkspace({
               </ResizablePanelGroup>
             </ResizablePanel>
 
-            {!isPythonCourse && !isHtmlCourse && showConsole && !consoleMinimized && (
+            {!isPythonCourse && showConsole && !consoleMinimized && (
               <>
                 <ResizableHandle withHandle />
                 <ResizablePanel

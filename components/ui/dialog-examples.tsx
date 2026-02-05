@@ -16,7 +16,6 @@ export function DialogExamples() {
   const handleConfirmAction = async () => {
     // Simulate async action
     await new Promise((resolve) => setTimeout(resolve, 2000));
-    console.log("Action confirmed!");
   };
 
   const handleLoadingAction = async () => {
@@ -24,7 +23,6 @@ export function DialogExamples() {
     // Simulate async action
     await new Promise((resolve) => setTimeout(resolve, 3000));
     setIsLoading(false);
-    console.log("Loading action completed!");
   };
 
   return (

@@ -250,15 +250,10 @@ export function SafeMarkdown({ content, theme = "light", className }: SafeMarkdo
           return <blockquote key={idx}>{renderBlocks(t.tokens || [])}</blockquote>;
         case "list": {
           const Tag = t.ordered ? "ol" : "ul";
-          const listClassName = t.ordered
-            ? "list-decimal pl-6 list-outside my-4 [&>li]:my-1"
-            : "list-disc pl-6 list-outside my-4 [&>li]:my-1";
           return (
-            <Tag key={idx} className={listClassName}>
+            <Tag key={idx}>
               {(t.items || []).map((item: AnyToken, itemIdx: number) => (
-                <li key={itemIdx} className="pl-1">
-                  {renderBlocks(item.tokens || [])}
-                </li>
+                <li key={itemIdx}>{renderBlocks(item.tokens || [])}</li>
               ))}
             </Tag>
           );

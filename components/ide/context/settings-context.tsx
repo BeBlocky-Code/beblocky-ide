@@ -2,7 +2,7 @@
 
 import type React from "react";
 
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useRef } from "react";
 
 type Settings = {
   fontSize: number;
@@ -33,6 +33,8 @@ const SettingsContext = createContext<SettingsContextType | undefined>(
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isInitialLoadRef = useRef(true);
 
   useEffect(() => {
     // Load settings from localStorage on initial render
@@ -40,15 +42,34 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if (savedSettings) {
       try {
         setSettings(JSON.parse(savedSettings));
-      } catch (error) {
-        console.error("Failed to parse settings:", error);
+      } catch {
+        // Silently fail if settings are corrupted
       }
     }
+    // Mark initial load complete after a tick
+    setTimeout(() => {
+      isInitialLoadRef.current = false;
+    }, 0);
   }, []);
 
   useEffect(() => {
-    // Save settings to localStorage when they change
-    localStorage.setItem("ide-settings", JSON.stringify(settings));
+    // Skip saving during initial load to prevent unnecessary writes
+    if (isInitialLoadRef.current) return;
+
+    // Debounce localStorage writes by 1 second to reduce disk I/O
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    saveTimeoutRef.current = setTimeout(() => {
+      localStorage.setItem("ide-settings", JSON.stringify(settings));
+      saveTimeoutRef.current = null;
+    }, 1000);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
   }, [settings]);
 
   const updateSettings = (newSettings: Partial<Settings>) => {
@@ -57,11 +78,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const openSettings = () => {
     // This would typically open a settings modal or panel
-    console.log("Settings opened");
   };
   const closeSettings = () => {
     // This would typically close a settings modal or panel
-    console.log("Settings closed");
   };
 
   return (
