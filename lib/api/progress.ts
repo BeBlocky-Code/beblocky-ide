@@ -38,12 +38,8 @@ async function apiCall<T>(
       throw error;
     }
 
-    // Handle network errors or server not running
-    console.warn(`API call to ${url} failed:`, error);
-
     // For development, return mock data if API is not available
     if (process.env.NODE_ENV === "development") {
-      console.warn("Backend API not available, using mock data");
       return getMockResponse(endpoint, options.method) as T;
     }
 

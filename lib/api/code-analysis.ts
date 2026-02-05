@@ -38,12 +38,8 @@ async function apiCall<T>(
       throw error;
     }
 
-    // Handle network errors or server not running
-    console.warn(`Code Analysis API call to ${url} failed:`, error);
-
     // For development, return mock data if API is not available
     if (process.env.NODE_ENV === "development") {
-      console.warn("Code Analysis API not available, using mock data");
       return getMockResponse(endpoint, options.method) as T;
     }
 
@@ -189,7 +185,6 @@ export const codeAnalysisApi = {
       body: JSON.stringify(data),
     }).catch((error) => {
       // If API fails, return mock analysis instead of throwing
-      console.warn("Code Analysis API not available, returning mock analysis");
       return getMockAnalysis(data);
     }),
 
@@ -206,7 +201,6 @@ export const codeAnalysisApi = {
       `/code-analysis/student/${encodeURIComponent(studentId)}`
     ).catch((error) => {
       // If API fails, return empty array instead of throwing
-      console.warn("Code Analysis API not available, returning empty analyses");
       return [];
     }),
 
