@@ -56,7 +56,7 @@ export default function IdeHeader({
         .then((data) => {
           // Handle both number response and object response
           const streakValue =
-            typeof data === "number" ? data : (data as any)?.streak ?? 0;
+            typeof data === "number" ? data : ((data as any)?.streak ?? 0);
           setStreak(streakValue || 0);
         })
         .catch(() => {
@@ -86,10 +86,9 @@ export default function IdeHeader({
           <Image
             src={Logo}
             alt="Logo"
-            width={100}
-            height={100}
+            width={50}
+            height={50}
             className="h-10 w-auto"
-            style={{ width: "auto", height: "auto" }}
             priority
           />
         </a>
