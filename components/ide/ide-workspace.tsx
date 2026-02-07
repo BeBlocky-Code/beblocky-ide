@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "./context/theme-provider";
 import {
@@ -86,27 +86,19 @@ export default function IdeWorkspace({
       progressApi.getByStudentAndCourse(studentId!, courseId),
     enabled:
       !!studentId && !!courseId && studentId !== "guest",
-    staleTime: 60 * 1000,
+    staleTime: 5 * 60 * 1000, // 5 minutes - reduce refetches
   });
 
-  // Default layout configuration
-  const getLayoutSizes = () => {
-    if (isMobile) return [100]; // On mobile, use full width for the active panel
+  // Memoize layout sizes to avoid new arrays every render and repeated work
+  const layoutSizes = useMemo(() => {
+    if (isMobile) return [100];
 
-    // Handle collapsed states
-    if (isPreviewCollapsed && isAiCollapsed) {
-      return [20, 80, 0, 0];
-    }
-    if (isPreviewCollapsed && showAiAssistant) {
-      return [20, 50, 0, 30];
-    }
-    if (isAiCollapsed) {
-      return [25, 40, 35, 0];
-    }
+    if (isPreviewCollapsed && isAiCollapsed) return [20, 80, 0, 0];
+    if (isPreviewCollapsed && showAiAssistant) return [20, 50, 0, 30];
+    if (isAiCollapsed) return [25, 40, 35, 0];
 
     switch (currentLayout) {
       case "standard":
-        // When AI is shown, bias towards editor + AI, reduce preview size
         return showAiAssistant ? [20, 45, 5, 30] : [25, 40, 35];
       case "split":
         return showAiAssistant ? [15, 35, 10, 40] : [20, 30, 50];
@@ -115,7 +107,13 @@ export default function IdeWorkspace({
       default:
         return [25, 40, 35];
     }
-  };
+  }, [
+    isMobile,
+    isPreviewCollapsed,
+    isAiCollapsed,
+    showAiAssistant,
+    currentLayout,
+  ]);
 
   const toggleConsole = () => {
     if (showConsole && !consoleMinimized) {
@@ -341,7 +339,7 @@ export default function IdeWorkspace({
                 {currentLayout !== "focus" && (
                   <>
                     <ResizablePanel
-                      defaultSize={getLayoutSizes()[0]}
+                      defaultSize={layoutSizes[0]}
                       minSize={15}
                       className="min-w-0 overflow-hidden"
                     >
@@ -360,7 +358,7 @@ export default function IdeWorkspace({
                 )}
 
                 <ResizablePanel
-                  defaultSize={getLayoutSizes()[1]}
+                  defaultSize={layoutSizes[1]}
                   minSize={25}
                   className="min-w-0 overflow-hidden"
                 >
@@ -426,7 +424,7 @@ export default function IdeWorkspace({
                   <>
                     <ResizableHandle withHandle />
                     <ResizablePanel
-                      defaultSize={getLayoutSizes()[2]}
+                      defaultSize={layoutSizes[2]}
                       minSize={15}
                       className="min-w-0 overflow-hidden"
                     >
@@ -446,7 +444,7 @@ export default function IdeWorkspace({
                   <>
                     <ResizableHandle withHandle />
                     <ResizablePanel
-                      defaultSize={getLayoutSizes()[3]}
+                      defaultSize={layoutSizes[3]}
                       minSize={15}
                       className="min-w-0 overflow-hidden"
                     >

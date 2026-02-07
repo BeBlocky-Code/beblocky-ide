@@ -2,7 +2,14 @@
 
 import type React from "react";
 
-import { createContext, useContext, useState, useEffect, useRef } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+} from "react";
 
 type Settings = {
   fontSize: number;
@@ -76,17 +83,16 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setSettings((prev) => ({ ...prev, ...newSettings }));
   };
 
-  const openSettings = () => {
-    // This would typically open a settings modal or panel
-  };
-  const closeSettings = () => {
-    // This would typically close a settings modal or panel
-  };
+  const openSettings = () => {};
+  const closeSettings = () => {};
+
+  const contextValue = useMemo(
+    () => ({ settings, updateSettings, openSettings, closeSettings }),
+    [settings]
+  );
 
   return (
-    <SettingsContext.Provider
-      value={{ settings, updateSettings, openSettings, closeSettings }}
-    >
+    <SettingsContext.Provider value={contextValue}>
       {children}
     </SettingsContext.Provider>
   );

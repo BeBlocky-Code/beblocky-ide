@@ -41,9 +41,22 @@ ${mainCode ?? ""}
     iframe.srcdoc = buildSrcDoc();
   }, [buildSrcDoc]);
 
-  // Update the iframe content when the code changes
+  // Debounce iframe updates when code changes to avoid heavy DOM work on every keystroke
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const PREVIEW_DEBOUNCE_MS = 450;
+
   useEffect(() => {
-    updateIframeContent();
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
+      updateIframeContent();
+    }, PREVIEW_DEBOUNCE_MS);
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+    };
   }, [updateIframeContent]);
 
   const refreshPreview = () => {

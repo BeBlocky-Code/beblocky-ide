@@ -73,6 +73,8 @@ export default function LearnPage() {
   // Refs to avoid stale closures in interval callback
   const resolvedStudentIdRef = useRef<string | null>(null);
   const courseIdRef = useRef<string>(courseId);
+  // Accumulate minutes in a ref to avoid re-renders every 60s; only sync to state periodically when visible
+  const timeSpentMinutesRef = useRef(0);
 
   // Cached queries
   const courseQuery = useQuery({
@@ -110,7 +112,7 @@ export default function LearnPage() {
     queryFn: () =>
       progressApi.getByStudentAndCourse(resolvedStudentId!, courseId),
     enabled: !!resolvedStudentId && !!courseId,
-    staleTime: 60 * 1000,
+    staleTime: 5 * 60 * 1000, // 5 minutes - reduce refetches and re-renders
   });
 
   const sortSlidesByOrder = (slides: ISlide[]) => {
@@ -134,42 +136,64 @@ export default function LearnPage() {
     });
   };
 
-  // Start time tracking when component mounts
+  // Sync timeSpentMinutesRef when we load progress so display is correct
   useEffect(() => {
+    if (progressQuery.data?.timeSpent != null) {
+      const minutes = Number(progressQuery.data.timeSpent);
+      if (Number.isFinite(minutes)) timeSpentMinutesRef.current = minutes;
+    }
+  }, [progressQuery.data?.timeSpent]);
+
+  // Time tracking: only re-render when tab is visible and at most every 5 minutes
+  useEffect(() => {
+    const tickMs = 60000; // 1 minute
+    const updateDisplayInterval = 5; // only setState every 5 minutes to avoid 60s re-renders
+
     const interval = setInterval(() => {
-      setTimeSpent((prev) => {
-        const newTime = prev + 1; // Increment by 1 minute
-        const progress = userProgressRef.current;
+      const isVisible =
+        typeof document !== "undefined" && document.visibilityState === "visible";
+      timeSpentMinutesRef.current += 1;
+      const minutes = timeSpentMinutesRef.current;
+      const progress = userProgressRef.current;
 
-        // Update progress time every hour (60 minutes)
-        if (progress?._id && newTime % 60 === 0) {
-          progressApi
-            .updateTimeSpent(progress._id, {
-              minutes: 1,
-              lastAccessed: new Date().toISOString(),
-            })
-            .then(() => {
-              // Use refs to get current values, avoiding stale closures
-              const currentStudentId = resolvedStudentIdRef.current;
-              const currentCourseId = courseIdRef.current;
-              if (currentStudentId && currentCourseId) {
-                queryClient.invalidateQueries({
-                  queryKey: queryKeys.progress.byStudentAndCourse(
-                    currentStudentId,
-                    currentCourseId
-                  ),
-                });
-              }
-            })
-            .catch(() => {});
-        }
+      // API: update progress every 60 minutes (unchanged)
+      if (progress?._id && minutes % 60 === 0) {
+        progressApi
+          .updateTimeSpent(progress._id, {
+            minutes: 1,
+            lastAccessed: new Date().toISOString(),
+          })
+          .then(() => {
+            const currentStudentId = resolvedStudentIdRef.current;
+            const currentCourseId = courseIdRef.current;
+            if (currentStudentId && currentCourseId) {
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.progress.byStudentAndCourse(
+                  currentStudentId,
+                  currentCourseId
+                ),
+              });
+            }
+          })
+          .catch(() => {});
+      }
 
-        return newTime;
-      });
-    }, 60000); // Update every minute
+      // Only trigger re-render when tab is visible and every 5 minutes (timeSpent is in seconds)
+      if (isVisible && minutes % updateDisplayInterval === 0) {
+        setTimeSpent(minutes * 60);
+      }
+    }, tickMs);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        setTimeSpent(timeSpentMinutesRef.current * 60);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [queryClient]);
 
@@ -323,7 +347,13 @@ export default function LearnPage() {
     setStudentId(resolvedStudentId);
     if (progressData) {
       setUserProgress(progressData);
-      if (progressData.timeSpent) setTimeSpent(progressData.timeSpent * 60);
+      if (progressData.timeSpent != null) {
+        const mins = Number(progressData.timeSpent);
+        if (Number.isFinite(mins)) {
+          timeSpentMinutesRef.current = mins;
+          setTimeSpent(mins * 60);
+        }
+      }
     }
   }, [
     courseId,

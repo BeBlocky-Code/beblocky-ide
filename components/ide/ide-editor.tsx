@@ -103,11 +103,29 @@ export default function IdeEditor({
     }
   }, [externalCode, isPythonCourse]);
 
-  // Update the main code whenever any of the code sections change
+  // Debounce syncing code to parent to avoid re-rendering whole tree on every keystroke
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingMainRef = useRef<string>("");
+  const DEBOUNCE_MS = 400;
+
   useEffect(() => {
-    setMainCode(
-      isPythonCourse ? code.pythonCode || "" : generateHtmlTemplate(code)
-    );
+    const nextMain =
+      isPythonCourse ? code.pythonCode || "" : generateHtmlTemplate(code);
+    pendingMainRef.current = nextMain;
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
+      setMainCode(nextMain);
+    }, DEBOUNCE_MS);
+
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+        setMainCode(pendingMainRef.current);
+      }
+    };
   }, [code, setMainCode, isPythonCourse]);
 
   const handleCodeChange = (value: string, language: keyof CodeState) => {
