@@ -12,13 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerTrigger,
-  DrawerClose,
-  DrawerTitle,
-} from "@/components/ui/drawer";
+import { useTheme } from "./context/theme-provider";
 
 type LessonProps = {
   _id?: string;
@@ -36,6 +30,9 @@ export default function IdeLessonNavigator({
   onSelectLesson: (lessonId: string) => void;
   lessons: LessonProps[];
 }) {
+  const { theme } = useTheme();
+  const accentColor = theme === "dark" ? "#892FFF" : "#FF932C";
+
   // All lessons are accessible; status is optional (no locking)
   const processedLessons = lessons.map((lesson, index) => ({
     ...lesson,
@@ -58,7 +55,7 @@ export default function IdeLessonNavigator({
       case "completed":
         return <CheckCircle size={16} className="text-green-500" />;
       case "in-progress":
-        return <Circle size={16} className="text-blue-500 fill-blue-500/30" />;
+        return <Circle size={16} style={{ color: accentColor }} className="fill-current/20" />;
       default:
         return <Circle size={16} className="text-muted-foreground" />;
     }
@@ -66,12 +63,12 @@ export default function IdeLessonNavigator({
 
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
+     
         <Progress value={progressPercentage} className="h-2" />
         <div className="text-xs text-muted-foreground">
           {completedLessons} of {totalLessons} lessons completed
         </div>
-      </div>
+   
 
       <ScrollArea className="h-[60vh]">
         <div className="space-y-2">
