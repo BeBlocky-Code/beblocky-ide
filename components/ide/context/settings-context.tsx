@@ -42,9 +42,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialLoadRef = useRef(true);
+  const initialLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
 
   useEffect(() => {
-    // Load settings from localStorage on initial render
     const savedSettings = localStorage.getItem("ide-settings");
     if (savedSettings) {
       try {
@@ -53,10 +55,16 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         // Silently fail if settings are corrupted
       }
     }
-    // Mark initial load complete after a tick
-    setTimeout(() => {
+    initialLoadTimeoutRef.current = setTimeout(() => {
+      initialLoadTimeoutRef.current = null;
       isInitialLoadRef.current = false;
     }, 0);
+    return () => {
+      if (initialLoadTimeoutRef.current) {
+        clearTimeout(initialLoadTimeoutRef.current);
+        initialLoadTimeoutRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {

@@ -49,6 +49,11 @@ export default function IdeConsole({
     null
   );
   const runCodeIdRef = useRef<string | null>(null);
+  const pyodideScriptListenersRef = useRef<{
+    script: HTMLScriptElement;
+    onLoad: () => void;
+    onError: () => void;
+  } | null>(null);
 
   const normalizedCourseLanguage = (courseLanguage || "web").toLowerCase();
   const isPythonCourse = normalizedCourseLanguage === "python";
@@ -58,7 +63,9 @@ export default function IdeConsole({
     setLogs([]);
   }, []);
 
-  // Add a log entry
+  const MAX_LOGS = 500;
+
+  // Add a log entry (capped to prevent unbounded RAM growth)
   const addLog = useCallback((message: string, level: LogLevel = "info") => {
     const newLog: LogEntry = {
       id: Date.now().toString(),
@@ -66,7 +73,10 @@ export default function IdeConsole({
       level,
       timestamp: new Date(),
     };
-    setLogs((prev) => [...prev, newLog]);
+    setLogs((prev) => {
+      const next = [...prev, newLog];
+      return next.length > MAX_LOGS ? next.slice(-MAX_LOGS) : next;
+    });
   }, []);
 
   const ensurePyodideScript = useCallback(async () => {
@@ -81,10 +91,16 @@ export default function IdeConsole({
           'script[data-pyodide="true"]'
         );
         if (existing) {
-          existing.addEventListener("load", () => resolve());
-          existing.addEventListener("error", () =>
-            reject(new Error("Failed to load Pyodide script."))
-          );
+          const onLoad = () => resolve();
+          const onError = () =>
+            reject(new Error("Failed to load Pyodide script."));
+          existing.addEventListener("load", onLoad);
+          existing.addEventListener("error", onError);
+          pyodideScriptListenersRef.current = {
+            script: existing,
+            onLoad,
+            onError,
+          };
           return;
         }
 
@@ -172,7 +188,7 @@ export default function IdeConsole({
     [addLog, clearLogs, ensurePyodide]
   );
 
-  // Clear runCode timeout and remove sandbox iframe on unmount
+  // Clear runCode timeout, message listener, iframe, and Pyodide script listeners on unmount
   useEffect(() => {
     return () => {
       if (runCodeTimeoutRef.current) {
@@ -188,6 +204,12 @@ export default function IdeConsole({
       if (iframe && document.body.contains(iframe)) {
         document.body.removeChild(iframe);
         runCodeIframeRef.current = null;
+      }
+      const pyodide = pyodideScriptListenersRef.current;
+      if (pyodide) {
+        pyodide.script.removeEventListener("load", pyodide.onLoad);
+        pyodide.script.removeEventListener("error", pyodide.onError);
+        pyodideScriptListenersRef.current = null;
       }
     };
   }, []);

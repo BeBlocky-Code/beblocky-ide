@@ -16,17 +16,23 @@ export function CoinProvider({ children }: { children: React.ReactNode }) {
   const [coins, setCoins] = useState(0);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialLoadRef = useRef(true);
+  const initialLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    // Load coins from localStorage on initial render
     const savedCoins = localStorage.getItem("coins");
     if (savedCoins) {
       setCoins(Number(savedCoins));
     }
-    // Mark initial load complete after a tick
-    setTimeout(() => {
+    initialLoadTimeoutRef.current = setTimeout(() => {
+      initialLoadTimeoutRef.current = null;
       isInitialLoadRef.current = false;
     }, 0);
+    return () => {
+      if (initialLoadTimeoutRef.current) {
+        clearTimeout(initialLoadTimeoutRef.current);
+        initialLoadTimeoutRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
