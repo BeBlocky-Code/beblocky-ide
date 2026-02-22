@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import IdeToolbar from "@/components/ide/ide-toolbar";
+
 import IdeWorkspace from "@/components/ide/ide-workspace";
 import IdeKeyboardShortcuts from "@/components/ide/ide-keyboard-shortcuts";
 import { ThemeProvider } from "@/components/ide/context/theme-provider";
@@ -59,7 +59,7 @@ export default function LearnPage() {
   const [userProgress, setUserProgress] = useState<IStudentProgress | null>(
     null
   );
-  const [showAiAssistant, setShowAiAssistant] = useState(false);
+  const [ideMode, setIdeMode] = useState<"ide" | "ai">("ide");
   const [studentId, setStudentId] = useState<string | null>(null);
   const [timeSpent, setTimeSpent] = useState<number>(0);
   const [lastSavedCode, setLastSavedCode] = useState<string>("");
@@ -688,69 +688,44 @@ export default function LearnPage() {
     };
   }, [mainCode, lastSavedCode, currentLessonId, courseId]);
 
-  // Handle AI assistant toggle
-  const handleToggleAiAssistant = () => {
-    setShowAiAssistant(!showAiAssistant);
-  };
 
-  if (isLoadingInitial) {
-    return <IdeLoadingSkeleton />;
-  }
-
-  if (hasError && errorMessage) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <p className="text-destructive mb-4">{errorMessage}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-md"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <AuthProvider>
       <ThemeProvider>
-        <CoinProvider>
-          <SettingsProvider>
-            <AIProvider>
+        {isLoadingInitial ? (
+          <IdeLoadingSkeleton />
+        ) : hasError && errorMessage ? (
+          <div className="flex items-center justify-center h-screen">
+            <div className="text-center">
+              <p className="text-destructive mb-4">{errorMessage}</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md transition-all hover:scale-105 active:scale-95"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        ) : (
+          <CoinProvider>
+            <SettingsProvider>
+              <AIProvider>
               <div className="flex flex-col h-screen w-screen overflow-hidden">
+                <div className="p-2">
                 <IdeHeader
                   courseTitle={currentCourseTitle}
                   userData={userData || undefined}
                   studentId={studentId || undefined}
                   onSettingsClick={() => setIsSettingsOpen(true)}
-                />
-                <IdeToolbar
-                  onRunCode={handleRunCode}
+                  ideMode={ideMode}
+                  onModeChange={setIdeMode}
                   onSaveCode={handleSaveCode}
                   mainCode={mainCode}
-                  onChangeLayout={(layout) => {
-                    setCurrentLayout(layout);
-                    if (layoutTimeoutRef.current) {
-                      clearTimeout(layoutTimeoutRef.current);
-                      layoutTimeoutRef.current = null;
-                    }
-                    const workspace = document.querySelector(
-                      '[data-ide-workspace="true"]'
-                    );
-                    if (workspace) {
-                      workspace.classList.add("layout-change");
-                      layoutTimeoutRef.current = setTimeout(() => {
-                        layoutTimeoutRef.current = null;
-                        workspace.classList.remove("layout-change");
-                      }, 10);
-                    }
-                  }}
-                  currentLayout={currentLayout}
-                  onToggleAiAssistant={handleToggleAiAssistant}
-                  showAiAssistant={showAiAssistant}
+                  courseLanguage={courseLanguage}
                 />
+                </div>
+
                 <div className="flex-1 overflow-hidden relative">
                   <IdeWorkspace
                     slides={currentSlides}
@@ -762,11 +737,11 @@ export default function LearnPage() {
                     currentLessonId={currentLessonId}
                     onSelectLesson={handleSelectLesson}
                     currentLayout={currentLayout}
-                    showAiAssistant={showAiAssistant}
-                    onToggleAiAssistant={handleToggleAiAssistant}
                     initialSlideIndex={currentSlideIndex}
                     onSlideChange={handleSlideChange}
                     studentId={studentId || "guest"}
+                    ideMode={ideMode}
+                    onIdeModeChange={setIdeMode}
                   />
                 </div>
                 <IdeKeyboardShortcuts
@@ -779,11 +754,30 @@ export default function LearnPage() {
               <IdeSettingsPanel
                 isOpen={isSettingsOpen}
                 onClose={() => setIsSettingsOpen(false)}
+                currentLayout={currentLayout}
+                onChangeLayout={(layout) => {
+                  setCurrentLayout(layout);
+                  if (layoutTimeoutRef.current) {
+                    clearTimeout(layoutTimeoutRef.current);
+                    layoutTimeoutRef.current = null;
+                  }
+                  const workspace = document.querySelector(
+                    '[data-ide-workspace="true"]'
+                  );
+                  if (workspace) {
+                    workspace.classList.add("layout-change");
+                    layoutTimeoutRef.current = setTimeout(() => {
+                      layoutTimeoutRef.current = null;
+                      workspace.classList.remove("layout-change");
+                    }, 10);
+                  }
+                }}
               />
             </AIProvider>
           </SettingsProvider>
         </CoinProvider>
-      </ThemeProvider>
-    </AuthProvider>
-  );
+      )}
+    </ThemeProvider>
+  </AuthProvider>
+);
 }

@@ -224,22 +224,22 @@ ${html}
               <Image
                 src={Logo}
                 alt="BeBlocky Logo"
-                width={100}
-                height={150}
-                className="h-8 md:h-10 w-auto object-contain"
+                width={120}
+                height={180}
+                className="h-10 md:h-12 w-auto object-contain"
                 priority
               />
               {theme === "dark" && (
-                <div className="absolute inset-0 bg-[#892FFF]/10 blur-xl -z-10 rounded-full" />
+                <div className="absolute inset-0 bg-[#892FFF]/15 blur-2xl -z-10 rounded-full" />
               )}
             </div>
           </a>
           
-          <div className="h-6 md:h-8 w-px bg-border/60 mx-1 hidden sm:block" />
+          <div className="h-8 md:h-10 w-px bg-border/60 mx-1 hidden sm:block" />
           
           {courseTitle && (
-            <div className={cn("hidden lg:block truncate max-w-[150px] xl:max-w-xs", isCompact && "lg:hidden")}>
-              <h1 className="text-sm md:text-base font-bold text-foreground/90 tracking-tight truncate">
+            <div className={cn("hidden lg:block truncate max-w-[200px] xl:max-w-md", isCompact && "lg:hidden")}>
+              <h1 className="text-base md:text-lg font-black text-foreground tracking-tight truncate">
                 {courseTitle}
               </h1>
             </div>
@@ -340,45 +340,69 @@ ${html}
             </div>
           )}
 
-          <div className="w-px h-6 bg-border/60 mx-0.5 md:mx-1 hidden md:block" />
+          {!isCompact && (
+            <>
+              <div className="w-px h-6 bg-border/60 mx-0.5 md:mx-1 hidden md:block" />
 
-          {shouldShowCoins && (
-            <div className="hidden sm:flex items-center gap-1.5 md:gap-2">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center gap-1 md:gap-1.5 bg-amber-50 text-amber-900 border border-amber-200/50 dark:bg-amber-900/10 dark:text-amber-300 px-2.5 py-1.5 rounded-full text-[10px] md:text-xs font-bold transition-transform hover:scale-105">
-                      <span className="tabular-nums hidden xs:inline">{coins.toFixed(0)}</span>
-                      <Coins size={14} className="text-amber-500 fill-amber-500/20" />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Your learning coins</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center gap-1 md:gap-1.5 bg-orange-50 text-orange-900 border border-orange-200/50 dark:bg-orange-900/10 dark:text-orange-300 px-2.5 py-1.5 rounded-full text-[10px] md:text-xs font-bold transition-transform hover:scale-105">
-                      <Flame size={14} style={{ color: accentColor }} />
-                      <span className="tabular-nums hidden xs:inline">{streak}</span>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Your coding streak</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
+              {shouldShowCoins && (
+                <div className="flex items-center gap-1 md:gap-2">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center gap-1 md:gap-1.5 bg-amber-50 text-amber-900 border border-amber-200/50 dark:bg-amber-900/10 dark:text-amber-300 px-2 md:px-3 py-1.5 rounded-full text-[10px] md:text-xs font-black transition-all hover:scale-105 shadow-sm active:scale-95">
+                          <span className="tabular-nums">{coins.toFixed(0)}</span>
+                          <Coins size={14} className="text-amber-500 fill-amber-500/20" />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Your learning coins</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center gap-1 md:gap-1.5 bg-orange-50 text-orange-900 border border-orange-200/50 dark:bg-orange-900/10 dark:text-orange-300 px-2 md:px-3 py-1.5 rounded-full text-[10px] md:text-xs font-black transition-all hover:scale-105 shadow-sm active:scale-95">
+                          <Flame size={14} style={{ color: accentColor }} />
+                          <span className="tabular-nums">{streak}</span>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Your coding streak</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+              )}
+
+              <div className="flex items-center gap-0.5 md:gap-1">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+                        className="rounded-full h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-foreground transition-all hover:bg-muted/50 shrink-0"
+                      >
+                        {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Switch to {theme === "light" ? "dark" : "light"} mode</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            </>
           )}
 
           <Button
             variant="ghost"
             size="icon"
             onClick={onSettingsClick || openSettings}
-            className="rounded-full h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            className="rounded-full h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-foreground transition-all hover:bg-muted/50 shrink-0"
           >
             <Settings className="h-4 w-4 md:h-5 md:w-5" />
           </Button>

@@ -93,13 +93,13 @@ export default function IdeWorkspace({
     if (isMobile) return [100];
     switch (currentLayout) {
       case "standard":
-        return [22, 43, 35];
+        return [35, 35, 30];
       case "split":
         return [18, 32, 50];
       case "focus":
         return [0, 85, 15];
       default:
-        return [22, 43, 35];
+        return [40, 35, 25];
     }
   }, [isMobile, currentLayout]);
 
