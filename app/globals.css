@@ -33,6 +33,17 @@
     --ring: 222.2 84% 4.9%;
 
     --radius: 0.5rem;
+
+    /* Deep Saffron accent */
+    --saffron: 33 100% 59%;
+
+    /* IDE/AI mode toggle */
+    --toggle-bg: 210 40% 93%;
+    --toggle-active: 222.2 84% 4.9%;
+    --toggle-active-fg: 210 40% 98%;
+
+    /* Notes panel accent */
+    --notes-accent: 33 100% 59%;
   }
 
   .dark {
@@ -63,6 +74,17 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
+
+    /* Deep Saffron accent */
+    --saffron: 33 100% 59%;
+
+    /* IDE/AI mode toggle */
+    --toggle-bg: 217.2 32.6% 17.5%;
+    --toggle-active: 210 40% 92%;
+    --toggle-active-fg: 222.2 84% 4.9%;
+
+    /* Notes panel accent */
+    --notes-accent: 33 100% 59%;
   }
 }
 
@@ -107,6 +129,18 @@
 
 .ai-pulse {
   animation: pulse 2s infinite ease-in-out;
+}
+
+/* Mode transition fade */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Add animation delay utilities */

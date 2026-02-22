@@ -15,7 +15,8 @@ interface LoadingButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
     | "outline"
     | "secondary"
     | "ghost"
-    | "link";
+    | "link"
+    | "brand";
   size?: "default" | "sm" | "lg" | "icon";
 }
 
