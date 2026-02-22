@@ -5,8 +5,9 @@ import { useSettings } from "./context/settings-context";
 import { useTheme } from "./context/theme-provider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Maximize2, Minimize2 } from "lucide-react";
+import { Maximize2, Minimize2, Code, Loader2, RefreshCw } from "lucide-react";
 import dynamic from "next/dynamic";
+import { cn } from "@/lib/utils";
 
 // Dynamically import Ace Editor to avoid SSR issues
 const AceEditor = dynamic(
@@ -51,11 +52,15 @@ export default function IdeEditor({
   startingCode = "",
   externalCode,
   courseLanguage = "web",
+  onLoadMyCode,
+  isLoadingSavedCode,
 }: {
   setMainCode: (code: string) => void;
   startingCode?: string;
   externalCode?: string | null;
   courseLanguage?: string;
+  onLoadMyCode?: () => void;
+  isLoadingSavedCode?: boolean;
 }) {
   const { settings } = useSettings();
   const { theme } = useTheme();
@@ -140,42 +145,95 @@ export default function IdeEditor({
   };
 
   // Determine the editor theme based on system theme and settings
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [isNarrow, setIsNarrow] = useState(false);
+
+  useEffect(() => {
+    if (!editorRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setIsNarrow(entry.contentRect.width < 500);
+      }
+    });
+
+    observer.observe(editorRef.current);
+    return () => observer.disconnect();
+  }, []);
+
   const editorTheme =
     settings.editorTheme || (theme === "dark" ? "dracula" : "chrome");
 
+  const accentColor = theme === "dark" ? "#892FFF" : "#FF932C";
+
   return (
-    <div className="h-full flex flex-col bg-background border rounded-md overflow-hidden">
-      <div className="border-b flex items-center justify-between p-2 bg-muted/30">
-        <h3 className="text-sm font-medium">Code Editor</h3>
+    <div ref={editorRef} className="h-full flex flex-col bg-background border rounded-xl overflow-hidden shadow-sm transition-all duration-300 ease-in-out">
+      <div className="border-b flex items-center justify-between px-2 md:px-3 py-1.5 bg-muted/20 backdrop-blur-sm">
+        <div className="flex items-center gap-2">
+          <Code size={16} style={{ color: accentColor }} />
+          <h3 className={cn("text-sm font-semibold tracking-tight", isNarrow ? "hidden" : "hidden sm:block")}>Code Editor</h3>
+        </div>
 
-        {!isVerticalLayout && !isPythonCourse && (
-          <Tabs
-            value={activeTab}
-            onValueChange={setActiveTab}
-            className="w-auto"
+        <div className="flex items-center gap-1.5 md:gap-3">
+          {onLoadMyCode && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onLoadMyCode}
+              disabled={isLoadingSavedCode}
+              style={{ borderColor: `${accentColor}4d`, color: accentColor }}
+              className="h-7 px-2 md:px-3 text-[10px] uppercase tracking-wider font-bold rounded-full transition-all hover:bg-muted/10"
+            >
+              {isLoadingSavedCode ? (
+                <Loader2 className="h-3 w-3 animate-spin md:mr-1.5" />
+              ) : (
+                <RefreshCw className="h-3 w-3 md:mr-1.5" />
+              )}
+              <span className={isNarrow ? "hidden" : "hidden md:inline"}>Load My Code</span>
+            </Button>
+          )}
+
+          {!isVerticalLayout && !isPythonCourse && (
+            <Tabs
+              value={activeTab}
+              onValueChange={setActiveTab}
+              className="w-auto"
+            >
+              <TabsList className="h-7 md:h-8 bg-background/50 border rounded-full p-0.5 md:p-1 gap-0.5 md:gap-1">
+                <TabsTrigger 
+                  value="html" 
+                  className={cn("text-[10px] md:text-xs px-2.5 md:px-4 rounded-full data-[state=active]:text-white transition-all h-full", isNarrow && "px-1.5")}
+                  style={{ backgroundColor: activeTab === "html" ? accentColor : "transparent" }}
+                >
+                  {isNarrow ? "H" : "HTML"}
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="css" 
+                  className={cn("text-[10px] md:text-xs px-2.5 md:px-4 rounded-full data-[state=active]:text-white transition-all h-full", isNarrow && "px-1.5")}
+                  style={{ backgroundColor: activeTab === "css" ? accentColor : "transparent" }}
+                >
+                  {isNarrow ? "C" : "CSS"}
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="js" 
+                  className={cn("text-[10px] md:text-xs px-2.5 md:px-4 rounded-full data-[state=active]:text-white transition-all h-full", isNarrow && "px-1.5")}
+                  style={{ backgroundColor: activeTab === "js" ? accentColor : "transparent" }}
+                >
+                  {isNarrow ? "J" : "JS"}
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
+
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleLayout}
+            className="h-7 w-7 md:h-8 md:w-8 rounded-full hover:bg-muted/50 hidden sm:flex"
           >
-            <TabsList className="h-8 bg-muted/50">
-              <TabsTrigger value="html" className="text-xs px-3">
-                HTML
-              </TabsTrigger>
-              <TabsTrigger value="css" className="text-xs px-3">
-                CSS
-              </TabsTrigger>
-              <TabsTrigger value="js" className="text-xs px-3">
-                JavaScript
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        )}
-
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleLayout}
-          className="h-8 w-8"
-        >
-          {isVerticalLayout ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-        </Button>
+            {isVerticalLayout ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </Button>
+        </div>
       </div>
 
       <div

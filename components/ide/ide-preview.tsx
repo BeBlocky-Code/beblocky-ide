@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Maximize, RefreshCw } from "lucide-react";
+import { Maximize, RefreshCw, Play } from "lucide-react";
 
 export default function IdePreview({ mainCode }: { mainCode: string }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -81,15 +81,18 @@ ${mainCode ?? ""}
   };
 
   return (
-    <Card className="h-full flex flex-col border-none rounded-none shadow-none">
-      <CardHeader className="p-2 border-b flex-row items-center justify-between space-y-0 bg-muted/30">
-        <div className="flex items-center space-x-2">
-          <div className="flex space-x-1">
-            <div className="w-3 h-3 rounded-full bg-red-500"></div>
-            <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-            <div className="w-3 h-3 rounded-full bg-green-500"></div>
+    <Card className="h-full flex flex-col border rounded-xl overflow-hidden shadow-sm transition-all duration-300 ease-in-out">
+      <CardHeader className="p-2.5 border-b flex-row items-center justify-between space-y-0 bg-muted/20 backdrop-blur-sm">
+        <div className="flex items-center space-x-3">
+          <div className="flex space-x-1.5 px-1">
+            <div className="w-2.5 h-2.5 rounded-full bg-red-400 shadow-sm"></div>
+            <div className="w-2.5 h-2.5 rounded-full bg-yellow-400 shadow-sm"></div>
+            <div className="w-2.5 h-2.5 rounded-full bg-green-400 shadow-sm"></div>
           </div>
-          <div className="text-sm font-medium">Preview</div>
+          <div className="flex items-center gap-1.5 bg-background/50 px-3 py-1 rounded-md border border-border/50 shadow-inner">
+            <Play size={12} className="text-primary" />
+            <span className="text-xs font-semibold tracking-tight text-muted-foreground">Preview</span>
+          </div>
         </div>
 
         <div className="flex items-center space-x-1">
