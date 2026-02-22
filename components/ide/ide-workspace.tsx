@@ -15,19 +15,16 @@ import IdeEditor from "./ide-editor";
 import IdePreview from "./ide-preview";
 import IdeAiAssistant from "./ide-ai-assistant";
 import IdeConsole from "./ide-console";
+import IdeNotesPanel from "./ide-notes-panel";
 import {
   Book,
   Code,
   Play,
   Bot,
   Terminal,
-  ChevronUp,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { Slide } from "@/lib/mock-data";
 import { ILesson } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import { progressApi } from "@/lib/api/progress";
@@ -43,13 +40,13 @@ export default function IdeWorkspace({
   currentLessonId,
   onSelectLesson,
   currentLayout,
-  showAiAssistant,
-  onToggleAiAssistant,
   initialSlideIndex = 0,
   onSlideChange,
   studentId,
+  ideMode = "ide",
+  onIdeModeChange,
 }: {
-  slides: any[]; // Changed from unknown[] to any[] to match expected types
+  slides: any[];
   courseId: string;
   courseLanguage?: string;
   mainCode: string;
@@ -58,23 +55,25 @@ export default function IdeWorkspace({
   currentLessonId?: string;
   onSelectLesson?: (lessonId: string) => void;
   currentLayout: string;
-  showAiAssistant: boolean;
-  onToggleAiAssistant: () => void;
   initialSlideIndex?: number;
   onSlideChange?: (slideIndex: number) => void;
   studentId?: string;
+  ideMode?: "ide" | "ai";
+  onIdeModeChange?: (mode: "ide" | "ai") => void;
 }) {
   const { theme } = useTheme();
   const isMobile = useMediaQuery("(max-width: 1000px)");
   const normalizedCourseLanguage = (courseLanguage || "web").toLowerCase();
   const isPythonCourse = normalizedCourseLanguage === "python";
+  const isHtmlCourse = !isPythonCourse; // HTML/web courses
   const [activeTab, setActiveTab] = useState("editor");
-  const [showConsole, setShowConsole] = useState(false);
-  const [consoleMinimized, setConsoleMinimized] = useState(true);
-  const [isPreviewCollapsed, setIsPreviewCollapsed] = useState(false);
-  const [isAiCollapsed, setIsAiCollapsed] = useState(false);
   const [externalCode, setExternalCode] = useState<string | null>(null);
   const [isLoadingSavedCode, setIsLoadingSavedCode] = useState(false);
+
+  // Internal mode state (when parent doesn't provide it)
+  const [internalMode, setInternalMode] = useState<"ide" | "ai">("ide");
+  const currentMode = onIdeModeChange ? ideMode : internalMode;
+
   const { toast } = useToast();
 
   const progressQuery = useQuery({
@@ -86,45 +85,24 @@ export default function IdeWorkspace({
       progressApi.getByStudentAndCourse(studentId!, courseId),
     enabled:
       !!studentId && !!courseId && studentId !== "guest",
-    staleTime: 5 * 60 * 1000, // 5 minutes - reduce refetches
+    staleTime: 5 * 60 * 1000,
   });
 
-  // Memoize layout sizes to avoid new arrays every render and repeated work
+  // IDE layout sizes
   const layoutSizes = useMemo(() => {
     if (isMobile) return [100];
-
-    if (isPreviewCollapsed && isAiCollapsed) return [20, 80, 0, 0];
-    if (isPreviewCollapsed && showAiAssistant) return [20, 50, 0, 30];
-    if (isAiCollapsed) return [25, 40, 35, 0];
-
     switch (currentLayout) {
       case "standard":
-        return showAiAssistant ? [20, 45, 5, 30] : [25, 40, 35];
+        return [22, 43, 35];
       case "split":
-        return showAiAssistant ? [15, 35, 10, 40] : [20, 30, 50];
+        return [18, 32, 50];
       case "focus":
-        return showAiAssistant ? [0, 70, 5, 25] : [0, 85, 15];
+        return [0, 85, 15];
       default:
-        return [25, 40, 35];
+        return [22, 43, 35];
     }
-  }, [
-    isMobile,
-    isPreviewCollapsed,
-    isAiCollapsed,
-    showAiAssistant,
-    currentLayout,
-  ]);
+  }, [isMobile, currentLayout]);
 
-  const toggleConsole = () => {
-    if (showConsole && !consoleMinimized) {
-      setConsoleMinimized(true);
-    } else {
-      setShowConsole(true);
-      setConsoleMinimized(false);
-    }
-  };
-
-  // Get starting code safely
   const getStartingCode = () => {
     const firstSlide = slides?.[0];
     return firstSlide?.startingCode || "";
@@ -197,74 +175,118 @@ export default function IdeWorkspace({
     }
   };
 
-  return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Minimized console tab */}
-      {!isPythonCourse && showConsole && consoleMinimized && !isMobile && (
-        <div
-          className="h-10 border-t bg-background flex items-center px-4 justify-between cursor-pointer hover:bg-muted/30 transition-colors"
-          onClick={() => setConsoleMinimized(false)}
-        >
-          <div className="flex items-center gap-2">
-            <Terminal size={16} className="text-muted-foreground" />
-            <span className="text-sm font-medium">Console</span>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              setConsoleMinimized(false);
-            }}
-          >
-            <ChevronUp size={16} />
-          </Button>
-        </div>
-      )}
+  const accentColor = theme === "dark" ? "#892FFF" : "#FF932C";
 
-      {/* Full-width console toggle when console is not shown */}
-      {!isPythonCourse && !showConsole && !isMobile && (
-        <div
-          className="h-10 border-t bg-background flex items-center px-4 justify-between cursor-pointer hover:bg-muted/30 transition-colors"
-          onClick={() => {
-            setShowConsole(true);
-            setConsoleMinimized(false);
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <Terminal size={16} className="text-muted-foreground" />
-            <span className="text-sm font-medium">Console</span>
-          </div>
-          <ChevronUp size={16} className="text-muted-foreground" />
-        </div>
-      )}
-
+  // ─── AI MODE SCREEN ────────────────────────────────────────────────────────
+  if (currentMode === "ai") {
+    return (
       <div
-        className="flex-1 overflow-hidden relative min-w-0"
-        data-ide-workspace="true"
+        className="flex-1 flex overflow-hidden"
+        style={{
+          animation: "fadeIn 0.25s ease",
+        }}
       >
+        {isMobile ? (
+          // Mobile: tabs for AI chat vs Notes
+          <div className=" flex-1 flex flex-col min-w-0 p-2">
+            <Tabs
+              value={activeTab}
+              onValueChange={setActiveTab}
+              className="h-full flex flex-col w-full"
+            >
+              <TabsList className="w-full justify-between bg-muted/50 p-1.5 rounded-full mb-3 border border-border/40">
+                <TabsTrigger 
+                  value="editor" 
+                  className="flex-1 flex items-center justify-center gap-2 rounded-full py-2 data-[state=active]:text-white transition-all duration-300"
+                  style={{ backgroundColor: activeTab === "editor" ? accentColor : "transparent" }}
+                >
+                  <Bot size={16} />
+                  <span className="text-xs font-bold uppercase tracking-wider">AI Chat</span>
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="notes" 
+                  className="flex-1 flex items-center justify-center gap-2 rounded-full py-2 data-[state=active]:text-white transition-all duration-300"
+                  style={{ backgroundColor: activeTab === "notes" ? accentColor : "transparent" }}
+                >
+                  <Book size={16} />
+                  <span className="text-xs font-bold uppercase tracking-wider">My Notes</span>
+                </TabsTrigger>
+              </TabsList>
+              <div className="flex-1 overflow-hidden">
+                <TabsContent value="editor" className="h-full m-0 p-0">
+                  <IdeAiAssistant
+                    code={mainCode}
+                    courseId={courseId}
+                    lessonId={currentLessonId || ""}
+                    studentId={studentId || "guest"}
+                  />
+                </TabsContent>
+                <TabsContent value="notes" className="h-full m-0 p-0">
+                  <IdeNotesPanel courseId={courseId} studentId={studentId} />
+                </TabsContent>
+              </div>
+            </Tabs>
+          </div>
+        ) : (
+          // Desktop: AI (65%) + Notes (35%) side by side
+          <ResizablePanelGroup direction="horizontal" className="h-full w-full">
+            <ResizablePanel defaultSize={65} minSize={45} className="overflow-hidden">
+              <IdeAiAssistant
+                code={mainCode}
+                courseId={courseId}
+                lessonId={currentLessonId || ""}
+                studentId={studentId || "guest"}
+              />
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize={35} minSize={25} className="overflow-hidden">
+              <IdeNotesPanel courseId={courseId} studentId={studentId} />
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        )}
+      </div>
+    );
+  }
+
+  // ─── IDE MODE SCREEN ───────────────────────────────────────────────────────
+  return (
+    <div
+      className="flex flex-col h-full overflow-hidden"
+      style={{ animation: "fadeIn 0.25s ease" }}
+    >
+      <div className="flex-1 overflow-hidden relative min-w-0 p-2 bg-muted/10" data-ide-workspace="true">
         {isMobile ? (
           <Tabs
             value={activeTab}
             onValueChange={setActiveTab}
             className="h-full flex flex-col min-w-0"
           >
-            <TabsList className="w-full justify-between bg-muted/50 p-1">
-              <TabsTrigger value="slides" className="flex items-center gap-2">
+            <TabsList className="w-full grid grid-cols-3 bg-muted/50 p-1.5 rounded-full mb-3 border border-border/40">
+              <TabsTrigger 
+                value="slides" 
+                className="flex items-center justify-center gap-1.5 rounded-full py-2 data-[state=active]:text-white transition-all duration-300"
+                style={{ backgroundColor: activeTab === "slides" ? accentColor : "transparent" }}
+              >
                 <Book size={16} />
-                <span>Slides</span>
+                <span className="text-[10px] font-bold uppercase tracking-tight">Slides</span>
               </TabsTrigger>
-              <TabsTrigger value="editor" className="flex items-center gap-2">
+              <TabsTrigger 
+                value="editor" 
+                className="flex items-center justify-center gap-1.5 rounded-full py-2 data-[state=active]:text-white transition-all duration-300"
+                style={{ backgroundColor: activeTab === "editor" ? accentColor : "transparent" }}
+              >
                 <Code size={16} />
-                <span>Editor</span>
+                <span className="text-[10px] font-bold uppercase tracking-tight">Editor</span>
               </TabsTrigger>
-              <TabsTrigger value="preview" className="flex items-center gap-2">
+              <TabsTrigger 
+                value="preview" 
+                className="flex items-center justify-center gap-1.5 rounded-full py-2 data-[state=active]:text-white transition-all duration-300"
+                style={{ backgroundColor: activeTab === "preview" ? accentColor : "transparent" }}
+              >
                 {isPythonCourse ? <Terminal size={16} /> : <Play size={16} />}
-                <span>{isPythonCourse ? "Console" : "Preview"}</span>
-              </TabsTrigger>
-              <TabsTrigger value="ai" className="flex items-center gap-2">
-                <Bot size={16} />
-                <span>AI</span>
+                <span className="text-[10px] font-bold uppercase tracking-tight">
+                  {isPythonCourse ? "Console" : "Preview"}
+                </span>
               </TabsTrigger>
             </TabsList>
 
@@ -282,27 +304,13 @@ export default function IdeWorkspace({
               </TabsContent>
 
               <TabsContent value="editor" className="h-full m-0 p-0">
-                <div className="flex items-center justify-between border-b bg-muted/30 px-3 py-2">
-                  <span className="text-sm font-medium">Editor</span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={handleLoadMyCode}
-                    disabled={isLoadingSavedCode}
-                  >
-                    {isLoadingSavedCode ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      "Load My Code"
-                    )}
-                  </Button>
-                </div>
                 <IdeEditor
                   setMainCode={setMainCode}
                   startingCode={getStartingCode()}
                   externalCode={externalCode}
                   courseLanguage={courseLanguage}
+                  onLoadMyCode={handleLoadMyCode}
+                  isLoadingSavedCode={isLoadingSavedCode}
                 />
               </TabsContent>
 
@@ -313,169 +321,61 @@ export default function IdeWorkspace({
                   <IdePreview mainCode={mainCode} />
                 )}
               </TabsContent>
-
-              <TabsContent value="ai" className="h-full m-0 p-0">
-                <IdeAiAssistant
-                  code={mainCode}
-                  courseId={courseId}
-                  lessonId={currentLessonId || ""}
-                  studentId={studentId || "guest"}
-                />
-              </TabsContent>
             </div>
           </Tabs>
         ) : (
-          <ResizablePanelGroup direction="vertical" className="h-full min-w-0">
-            <ResizablePanel
-              defaultSize={
-                !isPythonCourse && showConsole && !consoleMinimized ? 70 : 100
-              }
-              minSize={40}
-            >
-              <ResizablePanelGroup
-                direction="horizontal"
-                className="h-full min-w-0"
-              >
-                {currentLayout !== "focus" && (
-                  <>
-                    <ResizablePanel
-                      defaultSize={layoutSizes[0]}
-                      minSize={15}
-                      className="min-w-0 overflow-hidden"
-                    >
-                      <IdeSlides
-                        slides={slides}
-                        courseId={courseId}
-                        lessons={lessons}
-                        currentLessonId={currentLessonId}
-                        onSelectLesson={onSelectLesson}
-                        initialSlideIndex={initialSlideIndex}
-                        onSlideChange={onSlideChange}
-                      />
-                    </ResizablePanel>
-                    <ResizableHandle withHandle />
-                  </>
-                )}
-
-                <ResizablePanel
-                  defaultSize={layoutSizes[1]}
-                  minSize={25}
-                  className="min-w-0 overflow-hidden"
-                >
-                  <div className="h-full flex flex-col">
-                    <div className="flex items-center justify-between p-2 border-b bg-muted/30">
-                      <span className="text-sm font-medium">Editor</span>
-                      <div className="flex gap-1 items-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            setIsPreviewCollapsed(!isPreviewCollapsed)
-                          }
-                          className="h-6 w-6 p-0"
-                        >
-                          {isPreviewCollapsed ? (
-                            <ChevronRight size={14} />
-                          ) : (
-                            <ChevronLeft size={14} />
-                          )}
-                        </Button>
-                        {showAiAssistant && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setIsAiCollapsed(!isAiCollapsed)}
-                            className="h-6 w-6 p-0"
-                          >
-                            {isAiCollapsed ? (
-                              <ChevronRight size={14} />
-                            ) : (
-                              <ChevronLeft size={14} />
-                            )}
-                          </Button>
-                        )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleLoadMyCode}
-                          disabled={isLoadingSavedCode}
-                          className="h-6 px-2 text-xs font-medium"
-                        >
-                          {isLoadingSavedCode ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            "Load My Code"
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="flex-1 min-h-0">
-                      <IdeEditor
-                        setMainCode={setMainCode}
-                        startingCode={getStartingCode()}
-                        externalCode={externalCode}
-                        courseLanguage={courseLanguage}
-                      />
-                    </div>
-                  </div>
-                </ResizablePanel>
-
-                {!isPreviewCollapsed && (
-                  <>
-                    <ResizableHandle withHandle />
-                    <ResizablePanel
-                      defaultSize={layoutSizes[2]}
-                      minSize={15}
-                      className="min-w-0 overflow-hidden"
-                    >
-                      {isPythonCourse ? (
-                        <IdeConsole
-                          code={mainCode}
-                          courseLanguage={courseLanguage}
-                        />
-                      ) : (
-                        <IdePreview mainCode={mainCode} />
-                      )}
-                    </ResizablePanel>
-                  </>
-                )}
-
-                {showAiAssistant && !isAiCollapsed && (
-                  <>
-                    <ResizableHandle withHandle />
-                    <ResizablePanel
-                      defaultSize={layoutSizes[3]}
-                      minSize={15}
-                      className="min-w-0 overflow-hidden"
-                    >
-                      <IdeAiAssistant
-                        code={mainCode}
-                        courseId={courseId}
-                        lessonId={currentLessonId || ""}
-                        studentId={studentId || "guest"}
-                      />
-                    </ResizablePanel>
-                  </>
-                )}
-              </ResizablePanelGroup>
-            </ResizablePanel>
-
-            {!isPythonCourse && showConsole && !consoleMinimized && (
+          <ResizablePanelGroup direction="horizontal" className="h-full min-w-0 gap-2">
+            {currentLayout !== "focus" && (
               <>
-                <ResizableHandle withHandle />
                 <ResizablePanel
-                  defaultSize={30}
-                  minSize={20}
+                  defaultSize={layoutSizes[0]}
+                  minSize={15}
                   className="min-w-0 overflow-hidden"
                 >
-                  <IdeConsole
-                    code={mainCode}
-                    courseLanguage={courseLanguage}
-                    onMinimize={() => setConsoleMinimized(true)}
+                  <IdeSlides
+                    slides={slides}
+                    courseId={courseId}
+                    lessons={lessons}
+                    currentLessonId={currentLessonId}
+                    onSelectLesson={onSelectLesson}
+                    initialSlideIndex={initialSlideIndex}
+                    onSlideChange={onSlideChange}
                   />
                 </ResizablePanel>
+                <ResizableHandle withHandle />
               </>
             )}
+
+            <ResizablePanel
+              defaultSize={layoutSizes[1]}
+              minSize={25}
+              className="min-w-0 overflow-hidden"
+            >
+              <IdeEditor
+                setMainCode={setMainCode}
+                startingCode={getStartingCode()}
+                externalCode={externalCode}
+                courseLanguage={courseLanguage}
+                onLoadMyCode={handleLoadMyCode}
+                isLoadingSavedCode={isLoadingSavedCode}
+              />
+            </ResizablePanel>
+
+            <ResizableHandle withHandle />
+            <ResizablePanel
+              defaultSize={layoutSizes[2]}
+              minSize={15}
+              className="min-w-0 overflow-hidden"
+            >
+              {isPythonCourse ? (
+                <IdeConsole
+                  code={mainCode}
+                  courseLanguage={courseLanguage}
+                />
+              ) : (
+                <IdePreview mainCode={mainCode} />
+              )}
+            </ResizablePanel>
           </ResizablePanelGroup>
         )}
       </div>
