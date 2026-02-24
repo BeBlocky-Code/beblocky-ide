@@ -3,8 +3,10 @@
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MessageCircle, Clock, ChevronLeft, X } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Plus, MessageSquare, Clock, ChevronLeft, X, Sparkles, Code, MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTheme } from "./context/theme-provider";
 
 type Conversation = {
   _id: string;
@@ -18,6 +20,8 @@ interface IdeConversationSidebarProps {
   conversations: Conversation[];
   selectedConversationId: string;
   isLoading: boolean;
+  activeTab: string;
+  onTabChange: (tab: string) => void;
   onConversationSelect: (conversationId: string) => void;
   onNewConversation: () => void;
   isOpen: boolean;
@@ -28,11 +32,16 @@ export default function IdeConversationSidebar({
   conversations,
   selectedConversationId,
   isLoading,
+  activeTab,
+  onTabChange,
   onConversationSelect,
   onNewConversation,
   isOpen,
   onClose,
 }: IdeConversationSidebarProps) {
+  const { theme } = useTheme();
+  const accentColor = theme === "dark" ? "#892FFF" : "#FF932C";
+
   const formatLastActivity = (lastActivity: string) => {
     const date = new Date(lastActivity);
     const now = new Date();
@@ -55,7 +64,7 @@ export default function IdeConversationSidebar({
       {/* Mobile overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/20 z-40 lg:hidden"
+          className="fixed inset-0 bg-background/40 backdrop-blur-sm z-[60] lg:hidden"
           onClick={onClose}
         />
       )}
@@ -63,132 +72,198 @@ export default function IdeConversationSidebar({
       {/* Sidebar */}
       <div
         className={cn(
-          "fixed lg:relative inset-y-0 left-0 z-50 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 transform transition-all duration-300 ease-in-out",
+          "fixed lg:absolute inset-y-0 left-0 z-[70] bg-card/95 dark:bg-slate-900/95 backdrop-blur-xl border border-border/40 transform transition-all duration-500 ease-in-out shadow-2xl lg:m-2 lg:rounded-xl",
           // Mobile: slide in/out; Desktop: collapse width
           isOpen
-            ? "translate-x-0 w-80 lg:w-80"
-            : "-translate-x-full lg:translate-x-0 w-0 lg:w-0 border-transparent overflow-hidden"
+            ? "translate-x-0 w-80 lg:w-80 opacity-100"
+            : "-translate-x-full lg:translate-x-0 w-0 lg:w-0 border-transparent overflow-hidden opacity-0 pointer-events-none"
         )}
       >
         <div
           className={cn(
-            "flex flex-col h-full",
-            // Hide content completely when collapsed on desktop
-            !isOpen ? "lg:hidden" : ""
+            "flex flex-col h-full transition-opacity duration-300",
+            !isOpen ? "opacity-0" : "opacity-100"
           )}
         >
           {/* Header */}
-          <div className="p-4 border-b border-slate-200 dark:border-slate-700">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onClose}
-                  className="lg:hidden p-1 h-8 w-8"
-                >
-                  <X size={16} />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onClose}
-                  className="hidden lg:flex p-1 h-8 w-8"
-                >
-                  <ChevronLeft size={16} />
-                </Button>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                  Previous Chats
-                </h3>
-              </div>
+          <div className="p-4 border-b border-border/40 bg-muted/5 space-y-4">
+            <div className="flex items-center gap-3">
               <Button
-                variant="outline"
-                size="sm"
-                onClick={onNewConversation}
-                disabled={isLoading}
-                className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0"
+                variant="ghost"
+                size="icon"
+                onClick={onClose}
+                className="rounded-full hover:bg-muted/50 transition-colors h-8 w-8"
               >
-                <Plus size={16} className="mr-1" />
-                New Chat
+                <ChevronLeft size={18} />
               </Button>
+              <h3 className="text-lg font-black tracking-tight text-foreground">
+                AI Utility
+              </h3>
             </div>
 
-            {conversations.length > 0 && (
-              <Badge variant="outline" className="text-xs">
-                {conversations.length} conversation
-                {conversations.length !== 1 ? "s" : ""}
-              </Badge>
+            {/* Mode Switcher Tabs */}
+            <Tabs
+              value={activeTab}
+              onValueChange={onTabChange}
+              className="w-full"
+            >
+              <TabsList className="grid grid-cols-2 h-10 bg-background/50 border rounded-full p-1 gap-1 border-border/40 shadow-inner">
+                <TabsTrigger
+                  value="chat"
+                  className="text-[10px] font-black rounded-full data-[state=active]:text-white transition-all duration-300 px-2 data-[state=active]:shadow-md"
+                  style={{ backgroundColor: activeTab === "chat" ? accentColor : "transparent" }}
+                >
+                  <div className="flex items-center justify-center gap-1.5">
+                    <MessageCircle size={14} />
+                    <span className="tracking-tight uppercase">Chat</span>
+                  </div>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="analysis"
+                  className="text-[10px] font-black rounded-full data-[state=active]:text-white transition-all duration-300 px-2 data-[state=active]:shadow-md"
+                  style={{ backgroundColor: activeTab === "analysis" ? accentColor : "transparent" }}
+                >
+                  <div className="flex items-center justify-center gap-1.5">
+                    <Code size={14} />
+                    <span className="tracking-tight uppercase">Tools</span>
+                  </div>
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+
+            {activeTab === "chat" && (
+              <div className="pt-2">
+                <Button
+                  onClick={onNewConversation}
+                  disabled={isLoading}
+                  className="w-full rounded-full font-black text-xs h-10 shadow-md transition-all hover:scale-[1.02] active:scale-95 border-0 text-white"
+                  style={{ backgroundColor: accentColor }}
+                >
+                  <Plus size={16} className="mr-2" />
+                  New Conversation
+                </Button>
+              </div>
             )}
           </div>
 
-          {/* Conversations List */}
-          <ScrollArea className="flex-1 p-2">
-            {isLoading ? (
-              <div className="space-y-2">
-                {[...Array(3)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="p-3 rounded-lg bg-slate-100 dark:bg-slate-800 animate-pulse"
-                  >
-                    <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-2"></div>
-                    <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
+          {/* Sidebar Content based on Active Tab */}
+          <div className="flex-1 overflow-hidden flex flex-col">
+            {activeTab === "chat" ? (
+              <>
+                <div className="px-5 pt-4 flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted/30 border border-border/20">
+                    <Sparkles size={12} className="text-primary" />
+                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                      {conversations.length} {conversations.length === 1 ? "Session" : "Sessions"}
+                    </span>
                   </div>
-                ))}
-              </div>
-            ) : conversations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-32 text-center">
-                <MessageCircle size={32} className="text-slate-400 mb-2" />
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  No previous chats
-                </p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                  Start a new conversation to get help
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {conversations.map((conversation) => (
-                  <button
-                    key={conversation._id}
-                    onClick={() => onConversationSelect(conversation._id)}
-                    className={cn(
-                      "w-full p-3 rounded-lg text-left transition-colors duration-200",
-                      "hover:bg-slate-100 dark:hover:bg-slate-800",
-                      selectedConversationId === conversation._id
-                        ? "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800"
-                        : "bg-transparent"
-                    )}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
-                          {conversation.title || "Untitled Chat"}
-                        </h4>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Clock
-                            size={12}
-                            className="text-slate-400 flex-shrink-0"
-                          />
-                          <span className="text-xs text-slate-500 dark:text-slate-400">
-                            {formatLastActivity(conversation.lastActivity)}
-                          </span>
+                </div>
+
+                <ScrollArea className="flex-1 px-3 py-2">
+                  {isLoading ? (
+                    <div className="space-y-3">
+                      {[...Array(5)].map((_, i) => (
+                        <div
+                          key={i}
+                          className="p-4 rounded-3xl bg-muted/20 animate-pulse border border-border/10"
+                        >
+                          <div className="h-4 bg-muted/40 rounded-full w-3/4 mb-3"></div>
+                          <div className="h-3 bg-muted/40 rounded-full w-1/2"></div>
                         </div>
-                      </div>
-                      {conversation.messages &&
-                        conversation.messages.length > 0 && (
-                          <Badge
-                            variant="secondary"
-                            className="text-xs ml-2 flex-shrink-0"
-                          >
-                            {conversation.messages.length}
-                          </Badge>
-                        )}
+                      ))}
                     </div>
-                  </button>
-                ))}
+                  ) : conversations.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-48 text-center px-4">
+                      <div className="w-16 h-16 rounded-[2rem] bg-muted/20 flex items-center justify-center mb-4">
+                        <MessageSquare size={32} className="text-muted-foreground/40" />
+                      </div>
+                      <p className="text-sm font-black text-foreground mb-1">
+                        Nothing here yet
+                      </p>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Start a conversation with AI to see it in your history.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 pb-6 pt-2">
+                      {conversations.map((conversation) => {
+                        const isActive = selectedConversationId === conversation._id;
+                        return (
+                          <button
+                            key={conversation._id}
+                            onClick={() => onConversationSelect(conversation._id)}
+                            className={cn(
+                              "w-full p-4 rounded-[1.5rem] text-left transition-all duration-300 group relative overflow-hidden border",
+                              isActive
+                                ? "bg-muted/10 border-border/60 shadow-sm"
+                                : "bg-transparent border-transparent hover:bg-muted/10 hover:border-border/20"
+                            )}
+                          >
+                            {isActive && (
+                              <div 
+                                className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full"
+                                style={{ backgroundColor: accentColor }}
+                              />
+                            )}
+                            
+                            <div className="flex items-start justify-between gap-3 relative z-10">
+                              <div className="flex-1 min-w-0">
+                                <h4 className={cn(
+                                  "text-sm tracking-tight truncate mb-1.5",
+                                  isActive ? "font-black text-foreground" : "font-bold text-muted-foreground group-hover:text-foreground"
+                                )}>
+                                  {conversation.title || "Untitled Chat"}
+                                </h4>
+                                <div className="flex items-center gap-2">
+                                  <Clock
+                                    size={12}
+                                    className="text-muted-foreground/60 flex-shrink-0"
+                                  />
+                                  <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest">
+                                    {formatLastActivity(conversation.lastActivity)}
+                                  </span>
+                                </div>
+                              </div>
+                              {conversation.messages &&
+                                conversation.messages.length > 0 && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-[10px] font-black h-5 px-1.5 rounded-full bg-muted/30 text-muted-foreground border-border/10"
+                                  >
+                                    {conversation.messages.length}
+                                  </Badge>
+                                )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </ScrollArea>
+              </>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+                <div className="w-20 h-20 rounded-[2.5rem] bg-muted/20 flex items-center justify-center mb-6">
+                  <Code size={40} className="text-muted-foreground/30" />
+                </div>
+                <h4 className="text-base font-black text-foreground mb-2">Code Analysis Mode</h4>
+                <p className="text-sm text-muted-foreground leading-relaxed italic">
+                  "Use the Code Lens to inspect your work, find bugs, and get instant feedback."
+                </p>
+                <div className="mt-8 space-y-4 w-full">
+                  <div className="p-4 rounded-3xl bg-muted/10 border border-border/10 text-left">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-2 h-2 rounded-full bg-green-500" />
+                      <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Pro-Tip</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground/80 leading-relaxed font-bold">
+                      Click the 'Analyze' button in the main panel to start a scan.
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
-          </ScrollArea>
+          </div>
         </div>
       </div>
     </>

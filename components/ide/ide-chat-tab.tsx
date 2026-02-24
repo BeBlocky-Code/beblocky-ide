@@ -10,7 +10,9 @@ interface IdeChatTabProps {
   selectedConversationId: string;
   isThinking: boolean;
   onInputChange: (value: string) => void;
-  onSendMessage: () => void;
+  onSendMessage: (value?: string) => void;
+  typedMessages: Set<string>;
+  setTypedMessages: React.Dispatch<React.SetStateAction<Set<string>>>;
 }
 
 export default function IdeChatTab({
@@ -20,16 +22,20 @@ export default function IdeChatTab({
   isThinking,
   onInputChange,
   onSendMessage,
+  typedMessages,
+  setTypedMessages,
 }: IdeChatTabProps) {
   return (
-    <div className=" flex-1 flex flex-col min-h-0 bg-transparent rounded-full">
-      <IdeMessageList messages={messages} isThinking={isThinking} />
-      <IdeChatInput
+    <div className="flex-1 flex flex-col min-h-0 bg-transparent">
+      <IdeMessageList
+        messages={messages}
+        isThinking={isThinking}
         inputValue={inputValue}
         selectedConversationId={selectedConversationId}
-        isThinking={isThinking}
         onInputChange={onInputChange}
         onSendMessage={onSendMessage}
+        typedMessages={typedMessages}
+        setTypedMessages={setTypedMessages}
       />
     </div>
   );
