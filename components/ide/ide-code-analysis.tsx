@@ -1,11 +1,29 @@
 "use client";
 
 import { useMemo } from "react";
+import { ICodeAnalysis, ICodeFeedback } from "@/types/ai";
+import { useTheme } from "./context/theme-provider";
+import { cn } from "@/lib/utils";
+import {
+  Sparkles,
+  Terminal,
+  ShieldCheck,
+  AlertTriangle,
+  XCircle,
+  RotateCcw,
+  Zap,
+  History,
+  Code2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Code, CheckCircle, AlertCircle, Zap } from "lucide-react";
-import { ICodeAnalysis, ICodeFeedback } from "@/types/ai";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface IdeCodeAnalysisProps {
   isAnalyzing: boolean;
@@ -24,394 +42,296 @@ export default function IdeCodeAnalysis({
   onAnalyzeCode,
   onSelectAnalysis,
 }: IdeCodeAnalysisProps) {
-  if (isAnalyzing) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center p-8">
-        <div className="relative w-20 h-20 mb-6">
-          <div className="absolute inset-0 rounded-full border-4 border-t-blue-500 border-r-transparent border-b-transparent border-l-transparent animate-spin"></div>
-          <div className="absolute inset-2 rounded-full border-4 border-t-transparent border-r-purple-500 border-b-transparent border-l-transparent animate-spin animation-delay-150"></div>
-          <div className="absolute inset-4 rounded-full border-4 border-t-transparent border-r-transparent border-b-pink-500 border-l-transparent animate-spin animation-delay-300"></div>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Code size={24} className="text-blue-500" />
-          </div>
-        </div>
-        <div className="text-center">
-          <p className="text-lg font-medium text-slate-700 dark:text-slate-300 mb-2">
-            AI is analyzing your code...
-          </p>
-          <p className="text-sm text-muted-foreground mb-4">
-            Checking syntax, best practices, and providing feedback
-          </p>
-          <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-            <Zap size={12} />
-            <span>Powered by Beblocky AI</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const { theme } = useTheme();
+  const accentColor = theme === "dark" ? "#892FFF" : "#FF932C";
 
-  // Parse JSON from message content if it exists
-  const parseFeedbackFromMessage = (message: string): ICodeFeedback[] => {
-    try {
-      // Check if message contains JSON code block
-      const jsonMatch = message.match(/```json\s*([\s\S]*?)\s*```/);
-      if (jsonMatch && jsonMatch[1]) {
-        const parsed = JSON.parse(jsonMatch[1].trim());
-        // If parsed object has feedback array, return it
-        if (parsed.feedback && Array.isArray(parsed.feedback)) {
-          return parsed.feedback;
-        }
-        // If parsed is an array, return it
-        if (Array.isArray(parsed)) {
-          return parsed;
-        }
-      }
-      // Try parsing the entire message as JSON
-      const parsed = JSON.parse(message.trim());
-      if (parsed.feedback && Array.isArray(parsed.feedback)) {
-        return parsed.feedback;
-      }
-      if (Array.isArray(parsed)) {
-        return parsed;
-      }
-    } catch (e) {
-      // Not JSON, return empty array
+  const displayFeedback = codeFeedback;
+  const hasFeedback = displayFeedback.length > 0;
+
+  const getTypeStyles = (type: string) => {
+    switch (type) {
+      case "success":
+        return {
+          bg: "bg-green-500/10",
+          border: "border-green-500/20",
+          text: "text-green-500",
+          icon: ShieldCheck,
+          shadow: "shadow-green-500/5",
+        };
+      case "warning":
+        return {
+          bg: "bg-amber-500/10",
+          border: "border-amber-500/20",
+          text: "text-amber-500",
+          icon: AlertTriangle,
+          shadow: "shadow-amber-500/5",
+        };
+      case "error":
+        return {
+          bg: "bg-red-500/10",
+          border: "border-red-500/20",
+          text: "text-red-500",
+          icon: XCircle,
+          shadow: "shadow-red-500/5",
+        };
+      default:
+        return {
+          bg: "bg-blue-500/10",
+          border: "border-blue-500/20",
+          text: "text-blue-500",
+          icon: Sparkles,
+          shadow: "shadow-blue-500/5",
+        };
     }
-    return [];
   };
 
-  // Helper function to clean message from JSON code blocks
-  const cleanMessage = (message: string): string => {
-    if (!message || typeof message !== "string") return "";
-    let cleaned = message;
-    // Remove JSON code blocks (with various formats)
-    cleaned = cleaned.replace(/```json\s*[\s\S]*?\s*```/gi, "");
-    cleaned = cleaned.replace(/```\s*json\s*[\s\S]*?\s*```/gi, "");
-    // Remove any other code blocks
-    cleaned = cleaned.replace(/```\s*[\s\S]*?\s*```/g, "");
-    // Remove any remaining JSON-like structures at the start
-    cleaned = cleaned.replace(/^\s*json\s*\{[\s\S]*?\}\s*$/gm, "");
-    // Remove "json {" pattern that might appear
-    cleaned = cleaned.replace(/^\s*json\s*\{/gi, "");
-    // Remove if the entire message is just JSON structure
-    if (cleaned.trim().match(/^\s*\{\s*"feedback"\s*:/i)) {
-      return "";
-    }
-    cleaned = cleaned.trim();
-    return cleaned;
-  };
+  return (
+    <div className="h-full flex flex-col bg-transparent overflow-hidden">
+      {/* Landing State or Current Analysis Result */}
+      {!hasFeedback && !isAnalyzing ? (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-10 relative">
+          <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-transparent pointer-events-none" />
 
-  // Process feedback items to extract JSON from messages
-  const processedFeedback = useMemo(() => {
-    const processed: ICodeFeedback[] = [];
+          <div className="relative group perspective-1000 w-full max-w-md">
+            <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-purple-500/20 rounded-[2.5rem] blur-xl opacity-50 block transition duration-1000" />
 
-    codeFeedback.forEach((feedback) => {
-      // If message contains JSON, parse it and add all items
-      const parsedItems = parseFeedbackFromMessage(feedback.message);
-
-      if (parsedItems.length > 0) {
-        // Add all parsed feedback items with cleaned messages
-        parsedItems.forEach((item) => {
-          // Ensure the parsed item's message is clean
-          const itemMessage = cleanMessage(item.message);
-          // Only add if there's a meaningful message or other useful data
-          if (itemMessage || item.line || item.code || item.suggestion) {
-            processed.push({
-              ...item,
-              message: itemMessage,
-            });
-          }
-        });
-      } else {
-        // Not JSON, use the feedback item as-is but clean the message
-        const cleanMsg = cleanMessage(feedback.message);
-        // Only add if there's a meaningful message or other useful data
-        if (cleanMsg || feedback.line || feedback.code || feedback.suggestion) {
-          processed.push({
-            ...feedback,
-            message: cleanMsg,
-          });
-        }
-      }
-    });
-
-    return processed;
-  }, [codeFeedback]);
-
-  if (currentAnalysis || processedFeedback.length > 0) {
-    // Get info message from first element if it exists and is info type
-    const infoMessage =
-      processedFeedback.length > 0 && processedFeedback[0]?.type === "info"
-        ? processedFeedback[0]
-        : null;
-
-    // Start feedback from index 1 (skip info message at index 0)
-    const displayFeedback = infoMessage
-      ? processedFeedback.slice(1)
-      : processedFeedback;
-
-    return (
-      <ScrollArea className="h-full scrollbar-hide">
-        <div className="p-4 space-y-4">
-          {/* Info Message (from index 0) */}
-          {infoMessage && (
-            <div className="bg-blue-50 dark:bg-blue-950/30 rounded-xl p-4 border border-blue-200 dark:border-blue-800">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
-                  <AlertCircle
-                    size={16}
-                    className="text-blue-600 dark:text-blue-400"
-                  />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Badge variant="default" className="text-xs bg-blue-500">
-                      INFO
-                    </Badge>
-                    {infoMessage.points !== undefined &&
-                      infoMessage.points !== 0 && (
-                        <Badge variant="outline" className="text-xs">
-                          {infoMessage.points > 0 ? "+" : ""}
-                          {infoMessage.points} pts
-                        </Badge>
-                      )}
-                  </div>
-                  <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                    {infoMessage.message}
-                  </p>
-                </div>
+            <div className="relative bg-card/40 backdrop-blur-2xl border border-border/40 rounded-[2.5rem] p-8 sm:p-12 text-center shadow-2xl">
+              <div className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center mx-auto mb-8 shadow-2xl rotate-3 group-hover:rotate-0 transition-transform duration-500">
+                <Terminal size={48} className="text-white" />
               </div>
+
+              <h2 className="text-2xl sm:text-3xl font-black mb-4 tracking-tight text-foreground">
+                Code Inspector
+              </h2>
+              <p className="text-muted-foreground/80 font-medium mb-10 leading-relaxed text-sm sm:text-base">
+                Beblocky AI will scan your code for bugs, logic errors, and best
+                practices in realtime.
+              </p>
+
+              <Button
+                onClick={onAnalyzeCode}
+                className="w-full rounded-full h-14 font-black text-lg shadow-xl hover:scale-105 active:scale-95 transition-all shimmer flex items-center justify-center gap-3 border-0 text-white"
+                style={{ backgroundColor: accentColor }}
+              >
+                <Zap size={20} fill="currentColor" />
+                Analyze My Code
+              </Button>
             </div>
-          )}
+          </div>
 
-          {/* Current Analysis Results */}
-          {displayFeedback.length > 0 && (
-            <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 rounded-xl p-4 border">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="font-medium text-slate-800 dark:text-slate-200">
-                  Latest Analysis
-                </h4>
-                <Badge className="bg-gradient-to-r from-blue-500 to-purple-600">
-                  {displayFeedback.filter((f) => f.type !== "info").length}{" "}
-                  feedback items
-                </Badge>
-              </div>
-
-              {currentAnalysis && (
-                <div className="grid grid-cols-3 gap-4 mb-4">
-                  <div className="text-center p-3 bg-white/50 dark:bg-slate-800/50 rounded-lg">
-                    <p className="text-2xl font-bold text-green-600">
-                      {currentAnalysis.totalPoints}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Total Points
-                    </p>
-                  </div>
-                  <div className="text-center p-3 bg-white/50 dark:bg-slate-800/50 rounded-lg">
-                    <p className="text-2xl font-bold text-blue-600">
-                      {
-                        currentAnalysis.feedback.filter(
-                          (f) => f.type === "success"
-                        ).length
-                      }
-                    </p>
-                    <p className="text-xs text-muted-foreground">Success</p>
-                  </div>
-                  <div className="text-center p-3 bg-white/50 dark:bg-slate-800/50 rounded-lg">
-                    <p className="text-2xl font-bold text-orange-600">
-                      {
-                        currentAnalysis.feedback.filter(
-                          (f) => f.type === "warning" || f.type === "error"
-                        ).length
-                      }
-                    </p>
-                    <p className="text-xs text-muted-foreground">Issues</p>
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-3">
-                {displayFeedback
-                  .filter((feedback) => {
-                    // Skip if message is empty or only contains JSON structure
-                    const msg = (feedback.message || "").trim();
-                    // Check if message looks like JSON only
-                    const looksLikeJson =
-                      !msg ||
-                      msg.toLowerCase().startsWith("json") ||
-                      msg.includes("```json") ||
-                      msg.match(/^\s*\{\s*"feedback"/i) ||
-                      (msg.startsWith("{") &&
-                        msg.endsWith("}") &&
-                        msg.includes('"feedback"'));
-                    // Don't skip if it has a meaningful message or other useful data
-                    return (
-                      (msg && !looksLikeJson) ||
-                      feedback.line ||
-                      feedback.code ||
-                      feedback.suggestion
-                    );
-                  })
-                  .map((feedback, index) => {
-                    // Message should already be cleaned from processedFeedback
-                    const messageText = feedback.message || "";
-
-                    return (
-                      <div
-                        key={index}
-                        className={`p-4 rounded-lg border transition-all hover:shadow-md ${
-                          feedback.type === "success"
-                            ? "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800"
-                            : feedback.type === "warning"
-                            ? "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800"
-                            : feedback.type === "error"
-                            ? "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
-                            : "bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800"
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div
-                            className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                              feedback.type === "success"
-                                ? "bg-green-100 dark:bg-green-900/30 text-green-600"
-                                : feedback.type === "warning"
-                                ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600"
-                                : feedback.type === "error"
-                                ? "bg-red-100 dark:bg-red-900/30 text-red-600"
-                                : "bg-blue-100 dark:bg-blue-900/30 text-blue-600"
-                            }`}
-                          >
-                            {feedback.type === "success" ? (
-                              <CheckCircle size={16} />
-                            ) : (
-                              <AlertCircle size={16} />
-                            )}
-                          </div>
-
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Badge
-                                variant={
-                                  feedback.type === "success"
-                                    ? "default"
-                                    : feedback.type === "warning"
-                                    ? "secondary"
-                                    : feedback.type === "error"
-                                    ? "destructive"
-                                    : "default"
-                                }
-                                className={`text-xs ${
-                                  feedback.type === "info" ? "bg-blue-500" : ""
-                                }`}
-                              >
-                                {feedback.type.toUpperCase()}
-                              </Badge>
-                              {feedback.points !== undefined &&
-                                feedback.points !== 0 && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {feedback.points > 0 ? "+" : ""}
-                                    {feedback.points} pts
-                                  </Badge>
-                                )}
-                            </div>
-
-                            {messageText && (
-                              <p className="text-sm font-medium mb-2">
-                                {messageText}
-                              </p>
-                            )}
-
-                            {feedback.line && feedback.code && (
-                              <div className="mt-3 p-3 bg-slate-100 dark:bg-slate-800 rounded-md border">
-                                <p className="text-xs text-muted-foreground mb-2 font-medium">
-                                  Line {feedback.line}:
-                                </p>
-                                <pre className="text-xs font-mono bg-white dark:bg-slate-900 p-2 rounded border overflow-x-auto">
-                                  {feedback.code}
-                                </pre>
-                              </div>
-                            )}
-
-                            {feedback.suggestion && (
-                              <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-md border border-blue-200 dark:border-blue-800">
-                                <div className="flex items-start gap-2">
-                                  <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                    <span className="text-xs text-blue-600">
-                                      💡
-                                    </span>
-                                  </div>
-                                  <p className="text-sm text-blue-800 dark:text-blue-200">
-                                    {feedback.suggestion}
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            </div>
-          )}
-
-          {/* Analysis History */}
-          {analysisHistory.length > 1 && (
-            <div className="mt-6">
-              <h4 className="font-medium text-sm mb-3 text-slate-700 dark:text-slate-300">
-                Previous Analyses
-              </h4>
-              <div className="space-y-2">
-                {analysisHistory.slice(1).map((analysis, index) => (
-                  <div
-                    key={analysis._id}
-                    className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          {/* History shortcut if available */}
+          {analysisHistory.length > 0 && (
+            <div className="mt-12 animate-in fade-in slide-in-from-top-4 duration-1000">
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground/40 mb-4 text-center">
+                Review Past Sessions
+              </p>
+              <div className="flex flex-wrap justify-center gap-3">
+                {analysisHistory.slice(0, 3).map((analysis, i) => (
+                  <button
+                    key={i}
                     onClick={() => onSelectAnalysis(analysis)}
+                    className="px-4 py-2 rounded-full border border-border/40 bg-card/30 backdrop-blur-sm hover:bg-muted/30 transition-all flex items-center gap-2"
                   >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium">
-                          Analysis #{analysisHistory.length - index}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(analysis.analysisDate).toLocaleDateString()}{" "}
-                          • {analysis.totalPoints} points
-                        </p>
-                      </div>
-                      <Badge variant="outline" className="text-xs">
-                        {analysis.language}
-                      </Badge>
-                    </div>
-                  </div>
+                    <History size={14} className="text-primary" />
+                    <span className="text-xs font-bold text-muted-foreground">
+                      {new Date(analysis.analysisDate).toLocaleDateString()}
+                    </span>
+                  </button>
                 ))}
               </div>
             </div>
           )}
         </div>
-      </ScrollArea>
-    );
-  }
+      ) : (
+        <div className="flex-1 flex flex-col min-h-0 bg-transparent">
+          {/* Header Area */}
+          <div className="p-4 sm:p-6 border-b border-border/40 flex items-center justify-between bg-card/20 backdrop-blur-sm">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
+                <Terminal size={20} className="text-white" />
+              </div>
+              <div>
+                <h3 className="font-black text-lg tracking-tight">
+                  Lens Analysis
+                </h3>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
+                    {isAnalyzing ? "Scanning Codebase..." : "Session Active"}
+                  </span>
+                </div>
+              </div>
+            </div>
 
-  return (
-    <div className="h-full flex flex-col items-center justify-center p-8 text-center">
-      <div className="w-16 h-16 rounded-full bg-gradient-to-r from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 flex items-center justify-center mb-4">
-        <Code size={24} className="text-blue-600" />
-      </div>
-      <p className="text-lg font-medium text-slate-700 dark:text-slate-300 mb-2">
-        No code analysis available
-      </p>
-      <p className="text-sm text-muted-foreground mb-6 max-w-md">
-        Write some code in the editor and click "Analyze" to get AI-powered
-        feedback on your programming.
-      </p>
-      <Button
-        onClick={onAnalyzeCode}
-        className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
-      >
-        <Zap size={16} className="mr-2" />
-        Analyze Code
-      </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onAnalyzeCode}
+                disabled={isAnalyzing}
+                className="rounded-full h-9 px-4 font-black text-xs border-border/40 bg-background/50 backdrop-blur-sm hover:scale-105 active:scale-95 transition-all"
+              >
+                <RotateCcw
+                  size={14}
+                  className={cn("mr-2", isAnalyzing && "animate-spin")}
+                />
+                Re-Run
+              </Button>
+            </div>
+          </div>
+
+          <ScrollArea className="flex-1 px-4 py-6 sm:px-6">
+            <div className="max-w-4xl mx-auto space-y-6 pb-20">
+              {isAnalyzing && displayFeedback.length === 0 ? (
+                <div className="space-y-4">
+                  {[...Array(3)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="p-6 rounded-[2rem] bg-card/20 border border-border/10 animate-pulse"
+                    >
+                      <div className="flex items-center gap-4 mb-4">
+                        <div className="w-12 h-12 rounded-2xl bg-muted/40" />
+                        <div className="space-y-2 flex-1">
+                          <div className="h-4 bg-muted/40 rounded-full w-1/3" />
+                          <div className="h-3 bg-muted/20 rounded-full w-1/4" />
+                        </div>
+                      </div>
+                      <div className="h-20 bg-muted/10 rounded-3xl" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <>
+                  {/* Results Grid */}
+                  <div className="grid grid-cols-1 gap-4">
+                    {displayFeedback.map((feedback, index) => {
+                      const styles = getTypeStyles(feedback.type);
+                      const Icon = styles.icon;
+
+                      return (
+                        <div
+                          key={index}
+                          className={cn(
+                            "p-5 sm:p-6 rounded-[2rem] border transition-all duration-300 group hover:shadow-xl",
+                            styles.bg,
+                            styles.border,
+                            styles.shadow,
+                            "hover:-translate-y-1",
+                          )}
+                        >
+                          <div className="flex items-start gap-4 mb-4">
+                            <div
+                              className={cn(
+                                "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-lg transition-transform group-hover:rotate-12 duration-500",
+                                "bg-background/90",
+                                styles.text,
+                              )}
+                            >
+                              <Icon size={24} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-1">
+                                <Badge
+                                  className={cn(
+                                    "text-[10px] font-black uppercase tracking-[0.2em] rounded-full px-3",
+                                    "bg-background/50 border-0",
+                                    styles.text,
+                                  )}
+                                >
+                                  {feedback.type}
+                                </Badge>
+                                {feedback.line && (
+                                  <span className="text-[10px] font-bold text-muted-foreground/60">
+                                    LINE {feedback.line}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm sm:text-base font-black text-foreground/90 leading-tight">
+                                {feedback.message}
+                              </p>
+                            </div>
+                          </div>
+
+                          {feedback.code && (
+                            <div className="mt-4 rounded-3xl bg-slate-950 p-4 font-mono text-xs overflow-x-auto border border-white/5 shadow-inner">
+                              <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/5">
+                                <Code2 size={12} className="text-primary/60" />
+                                <span className="text-[10px] text-white/40 font-bold uppercase tracking-widest">
+                                  Snippet
+                                </span>
+                              </div>
+                              <code className="text-slate-300 block whitespace-pre">
+                                {feedback.code}
+                              </code>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Summary Footer */}
+                  <div className="p-8 rounded-[2.5rem] bg-card/20 backdrop-blur-md border border-border/20 text-center">
+                    <div className="w-16 h-16 rounded-[1.5rem] bg-green-500/20 flex items-center justify-center mx-auto mb-6">
+                      <ShieldCheck size={32} className="text-green-500" />
+                    </div>
+                    <h4 className="text-xl font-black mb-2 tracking-tight">
+                      Review Complete
+                    </h4>
+                    <p className="text-sm text-muted-foreground/80 leading-relaxed font-bold">
+                      Beblocky AI successfully analyzed your code. Update your
+                      elements and re-run for updated results.
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+          </ScrollArea>
+        </div>
+      )}
+
+      {/* Persistence Toggle Section (History View) */}
+      {!isAnalyzing && analysisHistory.length > 0 && hasFeedback && (
+        <div className="p-4 border-t border-border/20 bg-card/10">
+          <TooltipProvider>
+            <div className="flex items-center justify-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/40">
+                History
+              </span>
+              <div className="flex -space-x-2">
+                {analysisHistory.slice(0, 5).map((history, i) => (
+                  <Tooltip key={i}>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => onSelectAnalysis(history)}
+                        className={cn(
+                          "w-8 h-8 rounded-full border-2 border-background flex items-center justify-center transition-all hover:-translate-y-1 hover:z-10",
+                          currentAnalysis?._id === history._id
+                            ? "bg-primary text-white"
+                            : "bg-muted text-muted-foreground",
+                        )}
+                        style={{
+                          backgroundColor:
+                            currentAnalysis?._id === history._id
+                              ? accentColor
+                              : undefined,
+                        }}
+                      >
+                        <History size={14} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs font-bold">
+                        {new Date(history.analysisDate).toLocaleString()}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                ))}
+              </div>
+            </div>
+          </TooltipProvider>
+        </div>
+      )}
     </div>
   );
 }

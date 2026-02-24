@@ -48,7 +48,8 @@ function sanitizeHtml(html: string, kind: "inline" | "block"): string {
   const inlineTags = ["img", "span", "sup", "sub", "br"];
   const inlineAttrs = ["style", "src", "alt", "width", "height", "title"];
 
-  const allowedTags = kind === "inline" ? inlineTags : ["p", "div", ...inlineTags];
+  const allowedTags =
+    kind === "inline" ? inlineTags : ["p", "div", ...inlineTags];
   const allowedAttrs = inlineAttrs;
 
   return DOMPurify.sanitize(html, {
@@ -82,7 +83,8 @@ function inlinePlainText(tokens: AnyToken[] | undefined): string {
     if (!t) continue;
     if (t.type === "text") out += t.text || "";
     else if (t.type === "codespan") out += decodeHtmlEntities(t.text || "");
-    else if (t.type === "link") out += inlinePlainText(t.tokens) || t.text || "";
+    else if (t.type === "link")
+      out += inlinePlainText(t.tokens) || t.text || "";
     else if (t.type === "image") out += t.text || "";
     else if (t.tokens) out += inlinePlainText(t.tokens);
   }
@@ -98,7 +100,7 @@ function HeadingWithCopy({
   id: string | undefined;
   children: React.ReactNode;
 }) {
-  const Tag = (`h${level}` as unknown) as React.ElementType;
+  const Tag = `h${level}` as unknown as React.ElementType;
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -145,10 +147,16 @@ function HeadingWithCopy({
   );
 }
 
-export function SafeMarkdown({ content, theme = "light", className }: SafeMarkdownProps) {
+export function SafeMarkdown({
+  content,
+  theme = "light",
+  className,
+}: SafeMarkdownProps) {
   const tokens = useMemo(() => marked.lexer(content || ""), [content]);
 
-  const renderInline = (inlineTokens: AnyToken[] | undefined): React.ReactNode => {
+  const renderInline = (
+    inlineTokens: AnyToken[] | undefined,
+  ): React.ReactNode => {
     if (!inlineTokens || !Array.isArray(inlineTokens)) return null;
 
     return inlineTokens.map((t, idx) => {
@@ -170,7 +178,11 @@ export function SafeMarkdown({ content, theme = "light", className }: SafeMarkdo
         case "link": {
           const href = String(t.href || "");
           if (!href || isPossiblyUnsafeUrl(href)) {
-            return <React.Fragment key={idx}>{renderInline(t.tokens)}</React.Fragment>;
+            return (
+              <React.Fragment key={idx}>
+                {renderInline(t.tokens)}
+              </React.Fragment>
+            );
           }
           return (
             <a
@@ -230,7 +242,9 @@ export function SafeMarkdown({ content, theme = "light", className }: SafeMarkdo
         case "text": {
           // Marked can emit block-level "text" tokens (commonly inside list items).
           const inlineTokens =
-            t.tokens && Array.isArray(t.tokens) ? t.tokens : [{ type: "text", text: t.text }];
+            t.tokens && Array.isArray(t.tokens)
+              ? t.tokens
+              : [{ type: "text", text: t.text }];
           return <p key={idx}>{renderInline(inlineTokens)}</p>;
         }
         case "hr":
@@ -247,7 +261,9 @@ export function SafeMarkdown({ content, theme = "light", className }: SafeMarkdo
         case "paragraph":
           return <p key={idx}>{renderInline(t.tokens)}</p>;
         case "blockquote":
-          return <blockquote key={idx}>{renderBlocks(t.tokens || [])}</blockquote>;
+          return (
+            <blockquote key={idx}>{renderBlocks(t.tokens || [])}</blockquote>
+          );
         case "list": {
           const Tag = t.ordered ? "ol" : "ul";
           return (
@@ -262,7 +278,10 @@ export function SafeMarkdown({ content, theme = "light", className }: SafeMarkdo
           const language = t.lang || "text";
           const code = decodeHtmlEntities(String(t.text || ""));
           return (
-            <div key={idx} className="my-4 w-full min-w-0">
+            <div
+              key={idx}
+              className="my-4 w-full max-w-full min-w-0 overflow-x-auto rounded-[0.75rem] [&>div]:!max-w-none [&_pre]:!my-0"
+            >
               <SyntaxHighlighter
                 language={language}
                 style={theme === "dark" ? oneDark : oneLight}
@@ -272,9 +291,10 @@ export function SafeMarkdown({ content, theme = "light", className }: SafeMarkdo
                   fontSize: "0.85em",
                   padding: "0.9rem",
                   margin: 0,
-                  maxWidth: "100%",
-                  overflowX: "auto",
+                  minWidth: "min-content",
+                  overflow: "visible",
                 }}
+                codeTagProps={{ style: { overflow: "visible" } }}
               >
                 {code}
               </SyntaxHighlighter>
@@ -285,12 +305,15 @@ export function SafeMarkdown({ content, theme = "light", className }: SafeMarkdo
           const header = t.header || [];
           const rows = t.rows || [];
           return (
-            <table key={idx}>
+            <div key={idx} className="w-full max-w-full min-w-0 overflow-x-auto my-4">
+              <table>
               <thead>
                 <tr>
                   {header.map((cell: AnyToken, i: number) => (
                     <th key={i}>
-                      {cell?.tokens ? renderInline(cell.tokens) : cell?.text ?? String(cell ?? "")}
+                      {cell?.tokens
+                        ? renderInline(cell.tokens)
+                        : (cell?.text ?? String(cell ?? ""))}
                     </th>
                   ))}
                 </tr>
@@ -302,13 +325,14 @@ export function SafeMarkdown({ content, theme = "light", className }: SafeMarkdo
                       <td key={cIdx}>
                         {cell?.tokens
                           ? renderInline(cell.tokens)
-                          : cell?.text ?? String(cell ?? "")}
+                          : (cell?.text ?? String(cell ?? ""))}
                       </td>
                     ))}
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
           );
         }
         case "html": {
@@ -333,5 +357,3 @@ export function SafeMarkdown({ content, theme = "light", className }: SafeMarkdo
 
   return <div className={className}>{renderBlocks(tokens)}</div>;
 }
-
-

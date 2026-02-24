@@ -107,16 +107,24 @@ export function ModernCodeBlock({ code, language, filename }: CodeBlockProps) {
       transition={{ duration: 0.3 }}
       className="my-4 w-full min-w-0"
     >
-      <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-900/95 shadow-sm w-full max-w-full min-w-0">
+      <div className="overflow-hidden rounded-[1.5rem] border border-border/40 bg-card/30 dark:bg-slate-950/50 backdrop-blur-md shadow-sm w-full max-w-full min-w-0">
         {/* Header */}
-        <div className="flex items-center justify-between px-3 py-2 bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700/50">
+        <div className="flex items-center justify-between px-4 py-3 bg-muted/10 backdrop-blur-md border-b border-border/40">
           <div className="flex items-center gap-3">
             {/* File name */}
             {filename && (
               <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                <FileText className="h-4 w-4 text-primary" />
+                <span className="text-xs font-black tracking-tight text-foreground/80">
                   {filename}
+                </span>
+              </div>
+            )}
+            {!filename && (
+              <div className="flex items-center gap-2">
+                <Code2 className="h-4 w-4 text-primary" />
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">
+                  Source Code
                 </span>
               </div>
             )}
@@ -126,9 +134,10 @@ export function ModernCodeBlock({ code, language, filename }: CodeBlockProps) {
           <div className="flex items-center gap-2">
             {/* Language Badge */}
             <div
-              className={`px-2 py-0.5 text-[10px] rounded-md text-white bg-gradient-to-r ${getLanguageColor(
-                language
-              )}`}
+              className={cn(
+                "px-2.5 py-1 text-[10px] font-black rounded-full text-white bg-gradient-to-r shadow-sm",
+                getLanguageColor(language),
+              )}
             >
               <LanguageIcon className="inline-block h-3 w-3 mr-1" />
               {language.toUpperCase()}
@@ -137,7 +146,7 @@ export function ModernCodeBlock({ code, language, filename }: CodeBlockProps) {
             {/* Expand/Collapse */}
             <button
               onClick={() => setIsExpanded(!isExpanded)}
-              className="p-1 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 rounded-md text-slate-700 dark:text-slate-300"
+              className="p-1.5 hover:bg-muted/50 rounded-full text-muted-foreground transition-colors"
             >
               {isExpanded ? (
                 <Minimize2 className="h-4 w-4" />
@@ -149,7 +158,9 @@ export function ModernCodeBlock({ code, language, filename }: CodeBlockProps) {
             {/* Copy */}
             <button
               onClick={copyToClipboard}
-              className="p-1 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 rounded-md text-slate-700 dark:text-slate-300"
+              title="Copy code"
+              aria-label="Copy code"
+              className="p-1.5 hover:bg-muted/50 rounded-full text-muted-foreground transition-colors touch-manipulation"
             >
               <AnimatePresence mode="wait">
                 {copied ? (
@@ -183,13 +194,16 @@ export function ModernCodeBlock({ code, language, filename }: CodeBlockProps) {
           animate={{ height: isExpanded ? "auto" : "auto" }}
           transition={{ duration: 0.3 }}
           className={cn(
-            "relative overflow-auto max-h-[400px] w-full max-w-full min-w-0",
-            isExpanded && "max-h-none"
+            "relative overflow-auto max-h-[500px] w-full max-w-full min-w-0",
+            isExpanded && "max-h-none",
           )}
         >
-          <div className="w-full max-w-full min-w-0 overflow-x-auto">
-            <pre className="m-0 bg-transparent w-full min-w-0">
-              <code ref={codeRef} className={`language-${language}`}>
+          <div className="w-full max-w-full min-w-0 overflow-x-auto overflow-y-hidden p-4">
+            <pre className="m-0 bg-transparent w-max whitespace-pre">
+              <code
+                ref={codeRef}
+                className={`language-${language} text-base sm:text-lg font-medium leading-relaxed block`}
+              >
                 {code}
               </code>
             </pre>

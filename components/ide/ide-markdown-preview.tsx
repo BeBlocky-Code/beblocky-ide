@@ -62,14 +62,6 @@ export default function IdeMarkdownPreview({
   return (
     <div className={cn("h-full overflow-hidden", className)}>
       <Card className="h-full bg-gradient-to-br from-slate-50/80 to-white/80 dark:from-slate-900/80 dark:to-slate-800/80 backdrop-blur-sm border-0 shadow-xl">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-          className="flex items-center justify-between p-2 border-b border-border/50 bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm"
-        ></motion.div>
-
         {/* Content */}
         <ScrollArea className="h-[calc(100%-44px)] w-full">
           <motion.div

@@ -2,11 +2,10 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Code, MessageCircle, Zap } from "lucide-react";
-import { aiConversationApi } from "@/lib/api/ai-conversation";
+import { Zap, MessageCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { aiConversationApi, ApiError } from "@/lib/api/ai-conversation";
 import { codeAnalysisApi } from "@/lib/api/code-analysis";
 import {
   IAiConversation,
@@ -21,6 +20,7 @@ import IdeCodeAnalysis from "./ide-code-analysis";
 import IdeChatTab from "./ide-chat-tab";
 import { progressApi } from "@/lib/api/progress";
 import { queryKeys } from "@/lib/query-keys";
+import { useTheme } from "./context/theme-provider";
 
 type Conversation = {
   _id: string;
@@ -35,30 +35,64 @@ export default function IdeAiAssistant({
   courseId,
   lessonId,
   studentId,
+  persistedState,
 }: {
   code: string;
   courseId: string;
   lessonId: string;
   studentId: string;
+  persistedState?: {
+    activeTab: string;
+    setActiveTab: React.Dispatch<React.SetStateAction<string>>;
+    messages: IChatMessage[];
+    setMessages: React.Dispatch<React.SetStateAction<IChatMessage[]>>;
+    selectedConversationId: string;
+    setSelectedConversationId: React.Dispatch<React.SetStateAction<string>>;
+    isConversationSidebarOpen: boolean;
+    setIsConversationSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
+    inputValue: string;
+    setInputValue: React.Dispatch<React.SetStateAction<string>>;
+    isThinking: boolean;
+    setIsThinking: React.Dispatch<React.SetStateAction<boolean>>;
+    typedMessages: Set<string>;
+    setTypedMessages: React.Dispatch<React.SetStateAction<Set<string>>>;
+  };
 }) {
-  const [activeTab, setActiveTab] = useState("chat");
-  const [messages, setMessages] = useState<IChatMessage[]>([]);
-  const [selectedConversationId, setSelectedConversationId] =
-    useState<string>("");
-  const [inputValue, setInputValue] = useState("");
+  // Use persisted state or internal state as fallback
+  const [internalActiveTab, setInternalActiveTab] = useState("chat");
+  const [internalMessages, setInternalMessages] = useState<IChatMessage[]>([]);
+  const [internalSelectedConversationId, setInternalSelectedConversationId] = useState<string>("");
+  const [internalInputValue, setInternalInputValue] = useState("");
+  const [internalIsThinking, setInternalIsThinking] = useState(false);
+  const [internalIsConversationSidebarOpen, setInternalIsConversationSidebarOpen] = useState(true);
+  const [internalTypedMessages, setInternalTypedMessages] = useState<Set<string>>(new Set());
+
+  const activeTab = persistedState ? persistedState.activeTab : internalActiveTab;
+  const setActiveTab = persistedState ? persistedState.setActiveTab : setInternalActiveTab;
+  const messages = persistedState ? persistedState.messages : internalMessages;
+  const setMessages = persistedState ? persistedState.setMessages : setInternalMessages;
+  const selectedConversationId = persistedState ? persistedState.selectedConversationId : internalSelectedConversationId;
+  const setSelectedConversationId = persistedState ? persistedState.setSelectedConversationId : setInternalSelectedConversationId;
+  const inputValue = persistedState ? persistedState.inputValue : internalInputValue;
+  const setInputValue = persistedState ? persistedState.setInputValue : setInternalInputValue;
+  const isThinking = persistedState ? persistedState.isThinking : internalIsThinking;
+  const setIsThinking = persistedState ? persistedState.setIsThinking : setInternalIsThinking;
+  const isConversationSidebarOpen = persistedState ? persistedState.isConversationSidebarOpen : internalIsConversationSidebarOpen;
+  const setIsConversationSidebarOpen = persistedState ? persistedState.setIsConversationSidebarOpen : setInternalIsConversationSidebarOpen;
+  const typedMessages = persistedState ? persistedState.typedMessages : internalTypedMessages;
+  const setTypedMessages = persistedState ? persistedState.setTypedMessages : setInternalTypedMessages;
+
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [codeFeedback, setCodeFeedback] = useState<ICodeFeedback[]>([]);
-  const [currentAnalysis, setCurrentAnalysis] = useState<ICodeAnalysis | null>(
-    null
-  );
-  const [isThinking, setIsThinking] = useState(false);
-  const [isConversationSidebarOpen, setIsConversationSidebarOpen] =
-    useState(true);
+  const [currentAnalysis, setCurrentAnalysis] = useState<ICodeAnalysis | null>(null);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
 
   const isMountedRef = useRef(true);
   const pendingTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const queryClient = useQueryClient();
+
+  const { theme } = useTheme();
+  const accentColor = theme === "dark" ? "#892FFF" : "#FF932C";
 
   const conversationsQuery = useQuery({
     queryKey: queryKeys.ai.conversations(studentId),
@@ -171,8 +205,9 @@ export default function IdeAiAssistant({
     createConversationMutation.mutate();
   };
 
-  const handleSendMessage = async () => {
-    if (!inputValue.trim() || isCreatingConversation) return;
+  const handleSendMessage = async (value?: string) => {
+    const messageContent = (value ?? inputValue).trim();
+    if (!messageContent || isCreatingConversation) return;
 
     // If no conversation is selected, create one first
     if (!selectedConversationId) {
@@ -186,7 +221,7 @@ export default function IdeAiAssistant({
     // Add user message to UI immediately
     const userMessage: IChatMessage = {
       role: "user",
-      content: inputValue,
+      content: messageContent,
       timestamp: new Date(),
     };
 
@@ -199,7 +234,7 @@ export default function IdeAiAssistant({
       const updatedConversation = await aiConversationApi.sendMessage(
         selectedConversationId,
         {
-          message: inputValue,
+          message: messageContent,
           lessonId: lessonId,
         }
       );
@@ -207,7 +242,11 @@ export default function IdeAiAssistant({
       setMessages(updatedConversation.messages);
       invalidateConversations();
     } catch (error) {
-      console.error("Failed to send message:", error);
+      if (error instanceof ApiError && error.body) {
+        console.error("Send message API error:", error.status, error.message, error.body);
+      } else {
+        console.error("Failed to send message:", error);
+      }
 
       // Fallback to mock response if API fails
       const timeoutId = setTimeout(() => {
@@ -357,87 +396,65 @@ export default function IdeAiAssistant({
   };
 
   return (
-    <Card className="h-full flex flex-col border-none rounded-none shadow-none bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-      <CardHeader className="p-2 sm:p-3 border-b space-y-2 sm:space-y-3 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950 dark:to-purple-950">
-        <div className="flex items-center justify-between">
-          <Tabs
-            value={activeTab}
-            onValueChange={setActiveTab}
-            className="w-full"
-          >
-            <TabsList className="grid grid-cols-2 h-9 sm:h-10 bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm">
-              <TabsTrigger
-                value="chat"
-                className="text-xs sm:text-sm font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 px-2 sm:px-4"
-              >
-                <MessageCircle size={14} className="sm:size-4 mr-1 sm:mr-2" />
-                <span className="hidden min-[400px]:inline">AI Chat</span>
-                <span className="min-[400px]:hidden">Chat</span>
-              </TabsTrigger>
-              <TabsTrigger
-                value="analysis"
-                className="text-xs sm:text-sm font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 px-2 sm:px-4"
-              >
-                <Code size={14} className="sm:size-4 mr-1 sm:mr-2" />
-                <span className="hidden min-[400px]:inline">Code Analysis</span>
-                <span className="min-[400px]:hidden">Analysis</span>
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-      </CardHeader>
+    <div className="h-full flex flex-col bg-transparent overflow-hidden">
+      <div className="flex-1 p-0 overflow-hidden relative flex">
+        {/* Click-away overlay for sidebar */}
+        {isConversationSidebarOpen && (
+          <div 
+            className="absolute inset-0 bg-transparent z-[65]" 
+            onClick={() => setIsConversationSidebarOpen(false)}
+          />
+        )}
+        {/* Persistent Conversation/Utility Sidebar */}
+        <IdeConversationSidebar
+          conversations={conversations}
+          selectedConversationId={selectedConversationId}
+          isLoading={conversationsQuery.isLoading}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          onConversationSelect={(conversationId) => {
+            const conversation = conversations.find(
+              (c) => c._id === conversationId
+            );
+            if (conversation) {
+              setSelectedConversationId(conversation._id);
+              setMessages(conversation.messages || []);
+              // Close sidebar after selection on mobile
+              setIsConversationSidebarOpen(false);
+            }
+          }}
+          onNewConversation={handleNewChat}
+          isOpen={isConversationSidebarOpen}
+          onClose={() => setIsConversationSidebarOpen(false)}
+        />
 
-      <CardContent className="flex-1 p-0 overflow-hidden">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">
-          <TabsContent
-            value="chat"
-            className="h-full m-0 data-[state=active]:flex flex-col min-h-0"
-          >
-            <div className="flex h-full min-h-0 min-w-0">
-              {/* Conversation Sidebar */}
-              <IdeConversationSidebar
-                conversations={conversations}
-                selectedConversationId={selectedConversationId}
-                isLoading={conversationsQuery.isLoading}
-                onConversationSelect={(conversationId) => {
-                  const conversation = conversations.find(
-                    (c) => c._id === conversationId
-                  );
-                  if (conversation) {
-                    setSelectedConversationId(conversation._id);
-                    setMessages(conversation.messages || []);
-                    // Close sidebar after selection
-                    setIsConversationSidebarOpen(false);
-                  }
-                }}
-                onNewConversation={handleNewChat}
-                isOpen={isConversationSidebarOpen}
-                onClose={() => setIsConversationSidebarOpen(false)}
-              />
-
-              {/* Chat Area */}
-              <div className="bg-transparent flex-1 flex flex-col min-h-0 min-w-0">
-                {/* Toggle button for sidebar */}
-                <div className="p-1.5 sm:p-2 bg-transparent border-b border-slate-200 dark:border-slate-700">
+        {/* Dynamic Content Area */}
+        <div className="flex-1 flex flex-col min-w-0 bg-transparent relative overflow-hidden">
+          {activeTab === "chat" ? (
+            <div className="flex-1 flex flex-col min-h-0 relative">
+              {/* Toggle button for sidebar - Floating version */}
+              {!isConversationSidebarOpen && (
+                <div className="absolute top-4 left-4 z-10">
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     onClick={() =>
-                      setIsConversationSidebarOpen(!isConversationSidebarOpen)
+                      setIsConversationSidebarOpen(true)
                     }
-                    className="w-full lg:w-auto text-xs sm:text-sm h-8 sm:h-9"
+                    className="rounded-full shadow-md bg-background/80 backdrop-blur-md border border-border/40 hover:scale-105 active:scale-95 transition-all group"
                   >
                     <MessageCircle
-                      size={14}
-                      className="sm:size-4 mr-1.5 sm:mr-2"
+                      size={16}
+                      className="mr-2 text-primary group-hover:rotate-12 transition-transform"
                     />
-                    <span className="hidden min-[400px]:inline">
-                      {selectedConversationId ? "Switch Chat" : "Select Chat"}
+                    <span className="text-xs font-bold text-primary">
+                      History
                     </span>
-                    <span className="min-[400px]:hidden">Chats</span>
                   </Button>
                 </div>
+              )}
 
+              <div className="flex-1 min-h-0 flex flex-col">
                 <IdeChatTab
                   messages={messages}
                   inputValue={inputValue}
@@ -445,30 +462,52 @@ export default function IdeAiAssistant({
                   isThinking={isThinking}
                   onInputChange={setInputValue}
                   onSendMessage={handleSendMessage}
+                  typedMessages={typedMessages}
+                  setTypedMessages={setTypedMessages}
                 />
               </div>
             </div>
-          </TabsContent>
-
-          <TabsContent
-            value="analysis"
-            className="h-full m-0 data-[state=active]:flex flex-col"
-          >
-            <IdeCodeAnalysis
-              isAnalyzing={isAnalyzing}
-              currentAnalysis={currentAnalysis}
-              codeFeedback={codeFeedback}
-              analysisHistory={analysisHistory}
-              onAnalyzeCode={analyzeCode}
-              onSelectAnalysis={(analysis) => {
-                setCurrentAnalysis(analysis);
-                setCodeFeedback(analysis.feedback);
-              }}
-            />
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+          ) : (
+            <div className="flex-1 flex flex-col min-h-0 relative pl-0">
+             {!isConversationSidebarOpen && (
+                <div className="absolute top-4 left-4 z-10">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      setIsConversationSidebarOpen(true)
+                    }
+                    className="rounded-full shadow-md bg-background/80 backdrop-blur-md border border-border/40 hover:scale-105 active:scale-95 transition-all group"
+                  >
+                    <Zap
+                      size={16}
+                      className="mr-2 text-primary group-hover:rotate-12 transition-transform"
+                    />
+                    <span className="text-xs font-bold text-primary">
+                      Tools
+                    </span>
+                  </Button>
+                </div>
+              )}
+              {/* Left padding when Tools pill is visible so header is not covered */}
+              <div className={cn("flex-1 flex flex-col min-h-0 min-w-0", !isConversationSidebarOpen && "pl-24 sm:pl-28")}>
+              <IdeCodeAnalysis
+                isAnalyzing={isAnalyzing}
+                currentAnalysis={currentAnalysis}
+                codeFeedback={codeFeedback}
+                analysisHistory={analysisHistory}
+                onAnalyzeCode={analyzeCode}
+                onSelectAnalysis={(analysis) => {
+                  setCurrentAnalysis(analysis);
+                  setCodeFeedback(analysis.feedback);
+                }}
+              />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

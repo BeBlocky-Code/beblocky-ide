@@ -10,23 +10,22 @@ import {
   Code,
   Copy,
   Check,
-  X,
   Play,
+  BookOpen,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import {
   Drawer,
   DrawerContent,
   DrawerTrigger,
-  DrawerClose,
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Slide } from "@/lib/mock-data";
 import IdeLessonNavigator from "./ide-lesson-navigator";
 import IdeMarkdownPreview from "./ide-markdown-preview";
+import { useTheme } from "./context/theme-provider";
 
 export default function IdeSlides({
   slides,
@@ -45,8 +44,6 @@ export default function IdeSlides({
   initialSlideIndex?: number;
   onSlideChange?: (slideIndex: number) => void;
 }) {
-  // Defensive ordering: always render slides by their `order` field (stable tie-breakers).
-  // This avoids UI drift if any upstream code path provides slides unsorted.
   const orderedSlides = useMemo(() => {
     const toOrder = (s: any) => {
       const n = Number(s?.order);
@@ -71,50 +68,42 @@ export default function IdeSlides({
   const [currentSlideIndex, setCurrentSlideIndex] = useState(initialSlideIndex);
   const [activeTab, setActiveTab] = useState("content");
   const [copied, setCopied] = useState(false);
+  const [shouldAnimate, setShouldAnimate] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const hasLoadedInit = sessionStorage.getItem("ide_slides_loaded");
+    if (!hasLoadedInit) {
+      setShouldAnimate(true);
+      sessionStorage.setItem("ide_slides_loaded", "true");
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
       if (copyTimeoutRef.current) {
         clearTimeout(copyTimeoutRef.current);
-        copyTimeoutRef.current = null;
       }
     };
   }, []);
 
-  // Keep internal slide index in sync when parent changes lesson/slide or slides reorder.
   useEffect(() => {
-    const nextIndex =
-      typeof initialSlideIndex === "number" &&
-      Number.isFinite(initialSlideIndex)
-        ? initialSlideIndex
-        : 0;
-    const clampedIndex =
-      orderedSlides && orderedSlides.length > 0
-        ? Math.min(nextIndex, orderedSlides.length - 1)
-        : 0;
+    if (orderedSlides.length === 0) return;
+    const nextIndex = Number.isFinite(initialSlideIndex) ? initialSlideIndex : 0;
+    const clampedIndex = Math.max(0, Math.min(nextIndex, orderedSlides.length - 1));
     setCurrentSlideIndex(clampedIndex);
-  }, [initialSlideIndex, currentLessonId, orderedSlides]);
+  }, [initialSlideIndex, currentLessonId, orderedSlides.length]);
 
   const currentSlide = orderedSlides[currentSlideIndex] || {
-    _id: "default",
-    courseId: courseId,
-    order: 0,
-    title: "No slides available",
-    content: "This lesson doesn't have any slides yet.",
-    imageUrls: [],
-    backgroundColor: "#FFFFFF",
-    textColor: "#000000",
-    themeColors: { main: "#000000", secondary: "#FFFFFF" },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    title: "Learning Material",
+    content: "Please select a lesson to begin.",
   };
+
   const totalSlides = orderedSlides.length;
-  const progress =
-    totalSlides > 0 ? ((currentSlideIndex + 1) / totalSlides) * 100 : 0;
+  const progress = totalSlides > 0 ? ((currentSlideIndex + 1) / totalSlides) * 100 : 0;
 
   const goToNextSlide = () => {
-    if (currentSlideIndex < orderedSlides.length - 1) {
+    if (currentSlideIndex < totalSlides - 1) {
       const newIndex = currentSlideIndex + 1;
       setCurrentSlideIndex(newIndex);
       onSlideChange?.(newIndex);
@@ -129,66 +118,76 @@ export default function IdeSlides({
     }
   };
 
-  // Extract code blocks from content
   const extractCodeBlocks = (content: string) => {
     const codeRegex = /```[\s\S]*?```/g;
-    const matches = [];
-    let match;
-
-    while ((match = codeRegex.exec(content)) !== null) {
-      matches.push(match[0]);
-    }
-
-    return matches;
+    return content.match(codeRegex) || [];
   };
 
-  const codeBlocks = currentSlide.content
-    ? extractCodeBlocks(currentSlide.content)
-    : [];
+  const codeBlocks = currentSlide.content ? extractCodeBlocks(currentSlide.content) : [];
+
+  const { theme } = useTheme();
+  const accentColor = theme === "dark" ? "#892FFF" : "#FF932C";
 
   return (
-    <Card className="h-full min-w-0 flex flex-col border-none rounded-none shadow-none overflow-hidden">
-      <CardHeader className="p-2 border-b flex-row items-center justify-between space-y-0 bg-muted/30 min-w-0">
-        <div className="flex items-center gap-2 min-w-0">
+    <Card className="h-full min-w-0 flex flex-col border rounded-xl shadow-sm overflow-hidden bg-background transition-all duration-300">
+      <CardHeader className="p-3 border-b flex-row items-center justify-between space-y-0 bg-muted/20 backdrop-blur-sm min-w-0">
+        <div className="flex items-center gap-3 min-w-0">
           <Drawer>
             <DrawerTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <Menu size={16} />
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-8 w-8 rounded-full hover:bg-muted/50 transition-colors"
+                title="Lesson Menu"
+              >
+                <Menu size={18} className="text-muted-foreground hover:text-foreground" />
               </Button>
             </DrawerTrigger>
-            <DrawerContent className="max-h-[80vh] overflow-hidden flex flex-col">
+            <DrawerContent 
+              className="max-h-[85vh] overflow-hidden flex flex-col p-0 border-t-2"
+              style={{ borderTopColor: accentColor }}
+            >
               <DrawerTitle className="sr-only">Lesson Navigator</DrawerTitle>
-              <div className="p-4 border-b flex items-center justify-between">
+              <div className="p-6 border-b flex items-center justify-between bg-muted/10">
                 <div>
-                  <h3 className="text-lg font-semibold">Lesson Navigator</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Browse all lessons in this course
+                  <h3 className="text-xl font-bold tracking-tight">Curriculum</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Select a lesson to navigate through the course.
                   </p>
                 </div>
               </div>
-              <div className="flex-1 p-4">
+              <div className="flex-1 overflow-y-auto p-2 scrollbar-hide">
                 {lessons && onSelectLesson && currentLessonId ? (
                   <IdeLessonNavigator
                     currentLessonId={currentLessonId}
                     onSelectLesson={onSelectLesson}
                     lessons={lessons.map((lesson: any) => ({
-                      _id: lesson._id?.toString(),
+                      _id: lesson._id?.toString() || lesson.id?.toString(),
                       title: lesson.title,
                       description: lesson.description,
+                      status: lesson.status,
                     }))}
                   />
                 ) : (
-                  <div className="text-center text-muted-foreground">
-                    No lessons available
+                  <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                    <BookOpen size={48} className="opacity-20 mb-4" />
+                    <p>No other lessons available.</p>
                   </div>
                 )}
               </div>
             </DrawerContent>
           </Drawer>
-          <div className="text-sm font-medium truncate">Learning Materials</div>
+          
+          <div className="flex items-center gap-2 px-3 py-1 bg-background/50 rounded-full">
+            <BookOpen size={14} style={{ color: accentColor }} />
+            <span className="text-xs font-bold tracking-tight truncate">Slides</span>
+          </div>
         </div>
-        <div className="text-xs text-muted-foreground">
-          Slide {currentSlideIndex + 1} of {totalSlides || 1}
+
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
+            {currentSlideIndex + 1} / {totalSlides || 1}
+          </span>
         </div>
       </CardHeader>
 
@@ -197,112 +196,129 @@ export default function IdeSlides({
         onValueChange={setActiveTab}
         className="flex-1 flex flex-col overflow-hidden min-w-0"
       >
-        <TabsList className="px-4 pt-2 justify-start flex-shrink-0">
-          <TabsTrigger value="content" className="text-xs">
-            Content
-          </TabsTrigger>
-          {(codeBlocks.length > 0 || currentSlide.startingCode) && (
-            <TabsTrigger value="code" className="text-xs">
-              Code Examples
+        <div className="px-4 py-2 border-b bg-muted/5">
+          <TabsList className="h-8 p-1 bg-muted/40 rounded-full w-fit gap-1 border border-border/40">
+            <TabsTrigger 
+              value="content" 
+              className="text-xs px-4 rounded-full data-[state=active]:text-white transition-all duration-300 font-bold"
+              style={{ backgroundColor: activeTab === "content" ? accentColor : "transparent" }}
+            >
+              Content
             </TabsTrigger>
-          )}
-        </TabsList>
+            {(codeBlocks.length > 0 || currentSlide.startingCode) && (
+              <TabsTrigger 
+                value="code" 
+                className="text-xs px-4 rounded-full data-[state=active]:text-white transition-all duration-300 font-bold"
+                style={{ backgroundColor: activeTab === "code" ? accentColor : "transparent" }}
+              >
+                Examples
+              </TabsTrigger>
+            )}
+          </TabsList>
+        </div>
 
         <TabsContent
           value="content"
-          className="flex-1 overflow-hidden m-0 p-0 min-w-0"
+          className={cn(
+            "flex-1 overflow-hidden m-0 p-0 min-w-0",
+            shouldAnimate && "animate-in fade-in duration-300"
+          )}
         >
-          <IdeMarkdownPreview content={currentSlide.content || ""} />
+          <div className="h-full scrollbar-hide">
+            <IdeMarkdownPreview content={currentSlide.content || ""} />
+          </div>
         </TabsContent>
 
         <TabsContent
           value="code"
-          className="flex-1 overflow-hidden m-0 p-0 min-w-0"
+          className={cn(
+            "flex-1 overflow-hidden m-0 p-0 min-w-0",
+            shouldAnimate && "animate-in fade-in duration-300"
+          )}
         >
-          <div className="h-full overflow-y-auto scrollbar-hide min-w-0 max-w-full">
-            <CardContent className="p-4 bg-muted/10 min-w-0 max-w-full">
-              <div className="space-y-6">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <Code size={18} className="text-primary" />
-                  Code Examples
-                </h3>
+          <div className="h-full overflow-y-auto scrollbar-hide p-4 space-y-4">
+            <h3 className="text-sm font-bold flex items-center gap-2 text-muted-foreground pb-2 border-b border-border/40">
+              <Code size={16} style={{ color: accentColor }} />
+              CODE SNIPPETS
+            </h3>
 
-                {/* Starting Code Section */}
-                {currentSlide.startingCode && (
-                  <div className="space-y-3">
-                    <h4 className="text-md font-medium text-primary flex items-center gap-2">
-                      <Play size={16} />
-                      Starting Code
-                    </h4>
-                    <div className="relative group">
-                      <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 bg-background/80 backdrop-blur-sm"
-                          onClick={() => {
-                            navigator.clipboard.writeText(
-                              currentSlide.startingCode || "",
-                            );
-                            if (copyTimeoutRef.current) {
-                              clearTimeout(copyTimeoutRef.current);
-                              copyTimeoutRef.current = null;
-                            }
-                            setCopied(true);
-                            copyTimeoutRef.current = setTimeout(() => {
-                              copyTimeoutRef.current = null;
-                              setCopied(false);
-                            }, 2000);
-                          }}
-                        >
-                          {copied ? (
-                            <Check size={16} className="text-green-500" />
-                          ) : (
-                            <Copy size={16} />
-                          )}
-                        </Button>
-                      </div>
-                      <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-sm font-mono border-l-4 border-primary max-w-full">
-                        {currentSlide.startingCode}
-                      </pre>
-                    </div>
+            {currentSlide.startingCode && (
+              <div 
+                className="group relative rounded-xl overflow-hidden border border-border/40 bg-muted/5 transition-all"
+                style={{ borderColor: copied ? accentColor : undefined }}
+              >
+                <div className="flex items-center justify-between px-4 py-2 bg-muted/20 border-b border-border/40">
+                  <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground tracking-tighter uppercase">
+                    <Play size={10} style={{ color: accentColor }} />
+                    Starting Code
                   </div>
-                )}
-
-                {/* No Code Message */}
-                {!currentSlide.startingCode && codeBlocks.length === 0 && (
-                  <div className="text-center text-muted-foreground py-8">
-                    No code examples in this slide.
-                  </div>
-                )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 rounded-md hover:bg-background transition-colors"
+                    onClick={() => {
+                      navigator.clipboard.writeText(currentSlide.startingCode || "");
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                  >
+                    {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} className="text-muted-foreground" />}
+                  </Button>
+                </div>
+                <pre className="p-4 text-xs font-mono overflow-x-auto whitespace-pre">
+                  <code>{currentSlide.startingCode}</code>
+                </pre>
               </div>
-            </CardContent>
+            )}
+            
+            {!currentSlide.startingCode && codeBlocks.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-10 opacity-40">
+                <Code size={32} />
+                <p className="text-xs font-bold mt-2">No code snippets available</p>
+              </div>
+            )}
           </div>
         </TabsContent>
       </Tabs>
 
-      <div className="p-4 border-t flex-shrink-0 min-w-0">
-        <div className="flex items-center justify-between mb-2">
+      <div className="p-4 bg-muted/5 border-t space-y-4 flex-shrink-0 min-w-0">
+        <div className="flex items-center justify-between gap-4">
           <Button
             variant="outline"
             size="sm"
             onClick={goToPreviousSlide}
             disabled={currentSlideIndex === 0}
+            style={{ color: accentColor, borderColor: `${accentColor}33` }}
+            className="rounded-full flex-1 h-9 font-bold text-xs hover:bg-background transition-all group"
           >
-            <ChevronLeft size={16} className="mr-1" /> Previous
+            <ChevronLeft size={16} className="mr-1 group-hover:-translate-x-0.5 transition-transform" /> 
+            Back
           </Button>
 
           <Button
-            variant="outline"
+            variant="brand"
             size="sm"
             onClick={goToNextSlide}
-            disabled={currentSlideIndex === slides.length - 1}
+            disabled={currentSlideIndex === totalSlides - 1}
+            style={{ backgroundColor: accentColor }}
+            className="rounded-full flex-[1.5] h-9 font-bold text-xs shadow-md transition-all group border-none"
           >
-            Next <ChevronRight size={16} className="ml-1" />
+            {currentSlideIndex === totalSlides - 1 ? "Finished" : "Next Step"}
+            <ChevronRight size={16} className="ml-1 group-hover:translate-x-0.5 transition-transform" />
           </Button>
         </div>
 
-        <Progress value={progress} className="h-1" />
+        <div className="relative pt-1">
+          <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+            <div 
+              className="h-full transition-all duration-500 ease-out shadow-sm"
+              style={{ 
+                width: `${progress}%`,
+                backgroundImage: `linear-gradient(to right, ${accentColor}, ${theme === 'dark' ? '#b794f4' : '#f6ad55'})` 
+              }}
+            />
+          </div>
+        </div>
       </div>
     </Card>
   );

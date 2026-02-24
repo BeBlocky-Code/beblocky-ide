@@ -3,8 +3,12 @@ import { IAiConversation, IChatMessage } from "@/types/ai";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "https://api.beblocky.com";
 
-class ApiError extends Error {
-  constructor(public status: number, message: string) {
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+    public body?: unknown
+  ) {
     super(message);
     this.name = "ApiError";
   }
@@ -25,14 +29,16 @@ async function apiCall<T>(
       ...options,
     });
 
+    const data = await response.json().catch(() => ({}));
+
     if (!response.ok) {
-      throw new ApiError(
-        response.status,
-        `API call failed: ${response.statusText}`
-      );
+      const message =
+        (data && typeof data.message === "string" && data.message) ||
+        `API call failed: ${response.statusText}`;
+      throw new ApiError(response.status, message, data);
     }
 
-    return response.json();
+    return data as T;
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;
@@ -174,11 +180,18 @@ export const aiConversationApi = {
       lessonId?: string;
       slideId?: string;
     }
-  ) =>
-    apiCall<IAiConversation>(`/ai-conversations/${conversationId}/messages`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+  ) => {
+    const body: Record<string, string> = { message: data.message };
+    if (data.lessonId?.trim()) body.lessonId = data.lessonId.trim();
+    if (data.slideId?.trim()) body.slideId = data.slideId.trim();
+    return apiCall<IAiConversation>(
+      `/ai-conversations/${conversationId}/messages`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      }
+    );
+  },
 
   // Delete conversation
   delete: (id: string) =>

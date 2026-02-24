@@ -135,8 +135,9 @@ export function ConfirmationDialog({
           <Button
             onClick={handleConfirm}
             disabled={loading || isLoading}
+            variant={destructive ? "destructive" : "brand"}
             className={cn(
-              destructive && "bg-red-600 hover:bg-red-700",
+              "rounded-full px-6",
               (loading || isLoading) && "opacity-50 cursor-not-allowed"
             )}
           >
