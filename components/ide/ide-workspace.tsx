@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "./context/theme-provider";
 import {
@@ -16,14 +16,7 @@ import IdePreview from "./ide-preview";
 import IdeAiAssistant from "./ide-ai-assistant";
 import IdeConsole from "./ide-console";
 import IdeNotesPanel from "./ide-notes-panel";
-import {
-  Book,
-  Code,
-  Play,
-  Bot,
-  Terminal,
-  Loader2,
-} from "lucide-react";
+import { Book, Code, Play, Bot, Terminal, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ILesson } from "@/types";
 import { useToast } from "@/hooks/use-toast";
@@ -67,6 +60,7 @@ export default function IdeWorkspace({
   const isPythonCourse = normalizedCourseLanguage === "python";
   const isHtmlCourse = !isPythonCourse; // HTML/web courses
   const [activeTab, setActiveTab] = useState("editor");
+  const [aiMainActiveTab, setAiMainActiveTab] = useState("editor");
   const [externalCode, setExternalCode] = useState<string | null>(null);
   const [isLoadingSavedCode, setIsLoadingSavedCode] = useState(false);
 
@@ -74,17 +68,29 @@ export default function IdeWorkspace({
   const [internalMode, setInternalMode] = useState<"ide" | "ai">("ide");
   const currentMode = onIdeModeChange ? ideMode : internalMode;
 
+  // Persisted AI State
+  const [aiActiveTab, setAiActiveTab] = useState("chat");
+  const [aiMessages, setAiMessages] = useState<any[]>([]);
+  const [selectedConversationId, setSelectedConversationId] =
+    useState<string>("");
+  const [isConversationSidebarOpen, setIsConversationSidebarOpen] =
+    useState(false);
+  const [aiInputValue, setAiInputValue] = useState("");
+  const [isAiThinking, setIsAiThinking] = useState(false);
+  const [typedMessages, setTypedMessages] = useState<Set<string>>(new Set());
+
+  // Ref to prevent re-initialization of IdeEditor's internal code state
+  const editorCodeRef = useRef(mainCode);
+  useEffect(() => {
+    editorCodeRef.current = mainCode;
+  }, [mainCode]);
+
   const { toast } = useToast();
 
   const progressQuery = useQuery({
-    queryKey: queryKeys.progress.byStudentAndCourse(
-      studentId ?? "",
-      courseId
-    ),
-    queryFn: () =>
-      progressApi.getByStudentAndCourse(studentId!, courseId),
-    enabled:
-      !!studentId && !!courseId && studentId !== "guest",
+    queryKey: queryKeys.progress.byStudentAndCourse(studentId ?? "", courseId),
+    queryFn: () => progressApi.getByStudentAndCourse(studentId!, courseId),
+    enabled: !!studentId && !!courseId && studentId !== "guest",
     staleTime: 5 * 60 * 1000,
   });
 
@@ -102,6 +108,30 @@ export default function IdeWorkspace({
         return [40, 35, 25];
     }
   }, [isMobile, currentLayout]);
+
+  // Lessons with completion status
+  const lessonsWithStatus = useMemo(() => {
+    if (!lessons) return [];
+    const progress = progressQuery.data as any;
+    const progressEntries = progress?.progress || [];
+
+    return lessons.map((lesson) => {
+      const lessonId =
+        (lesson as any)._id?.toString() || (lesson as any).id?.toString();
+      const progressEntry = progressEntries.find(
+        (p: any) => p.lessonId?.toString() === lessonId,
+      );
+
+      let status: "completed" | "in-progress" | "locked" = "locked";
+      if (progressEntry?.completed) status = "completed";
+      else if (lessonId === currentLessonId) status = "in-progress";
+
+      return {
+        ...lesson,
+        status,
+      };
+    });
+  }, [lessons, progressQuery.data, currentLessonId]);
 
   const getStartingCode = () => {
     const firstSlide = slides?.[0];
@@ -145,8 +175,10 @@ export default function IdeWorkspace({
               ?.slice()
               ?.reverse()
               ?.find(
-                (entry: { lessonId?: { toString: () => string }; code?: string }) =>
-                  entry.lessonId?.toString() === currentLessonId
+                (entry: {
+                  lessonId?: { toString: () => string };
+                  code?: string;
+                }) => entry.lessonId?.toString() === currentLessonId,
               )?.code
           : "");
 
@@ -180,66 +212,115 @@ export default function IdeWorkspace({
   // ─── AI MODE SCREEN ────────────────────────────────────────────────────────
   if (currentMode === "ai") {
     return (
-      <div
-        className="flex-1 flex overflow-hidden"
-        style={{
-          animation: "fadeIn 0.25s ease",
-        }}
-      >
+      <div className="h-full w-full flex flex-col overflow-hidden bg-muted/10 p-2">
         {isMobile ? (
-          // Mobile: tabs for AI chat vs Notes
-          <div className=" flex-1 flex flex-col min-w-0 p-2">
-            <Tabs
-              value={activeTab}
-              onValueChange={setActiveTab}
-              className="h-full flex flex-col w-full"
-            >
-              <TabsList className="w-full justify-between bg-muted/50 p-1.5 rounded-full mb-3 border border-border/40">
-                <TabsTrigger 
-                  value="editor" 
-                  className="flex-1 flex items-center justify-center gap-2 rounded-full py-2 data-[state=active]:text-white transition-all duration-300"
-                  style={{ backgroundColor: activeTab === "editor" ? accentColor : "transparent" }}
-                >
-                  <Bot size={16} />
-                  <span className="text-xs font-bold uppercase tracking-wider">AI Chat</span>
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="notes" 
-                  className="flex-1 flex items-center justify-center gap-2 rounded-full py-2 data-[state=active]:text-white transition-all duration-300"
-                  style={{ backgroundColor: activeTab === "notes" ? accentColor : "transparent" }}
-                >
-                  <Book size={16} />
-                  <span className="text-xs font-bold uppercase tracking-wider">My Notes</span>
-                </TabsTrigger>
-              </TabsList>
-              <div className="flex-1 overflow-hidden">
-                <TabsContent value="editor" className="h-full m-0 p-0">
-                  <IdeAiAssistant
-                    code={mainCode}
-                    courseId={courseId}
-                    lessonId={currentLessonId || ""}
-                    studentId={studentId || "guest"}
-                  />
-                </TabsContent>
-                <TabsContent value="notes" className="h-full m-0 p-0">
-                  <IdeNotesPanel courseId={courseId} studentId={studentId} />
-                </TabsContent>
-              </div>
-            </Tabs>
-          </div>
+          // Mobile: pill toggle outside card (like IDE mode), then bordered content
+          <Tabs
+            value={aiMainActiveTab}
+            onValueChange={setAiMainActiveTab}
+            className="h-full flex flex-col w-full min-w-0"
+          >
+            <TabsList className="w-full grid grid-cols-2 bg-muted/50 p-1.5 rounded-full mb-3 border border-border/40">
+              <TabsTrigger
+                value="editor"
+                className="flex items-center justify-center gap-1.5 rounded-full py-2 data-[state=active]:text-white transition-all duration-300 font-bold"
+                style={{
+                  backgroundColor:
+                    aiMainActiveTab === "editor" ? accentColor : "transparent",
+                }}
+              >
+                <Bot size={16} />
+                <span className="text-[10px] font-bold uppercase tracking-tight">
+                  AI Utilities
+                </span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="notes"
+                className="flex items-center justify-center gap-1.5 rounded-full py-2 data-[state=active]:text-white transition-all duration-300 font-bold"
+                style={{
+                  backgroundColor:
+                    aiMainActiveTab === "notes" ? accentColor : "transparent",
+                }}
+              >
+                <Book size={16} />
+                <span className="text-[10px] font-bold uppercase tracking-tight">
+                  My Notes
+                </span>
+              </TabsTrigger>
+            </TabsList>
+            <div className="flex-1 min-h-0 flex flex-col bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+              <TabsContent value="editor" className="h-full m-0 p-0 flex-1">
+                <IdeAiAssistant
+                  code={mainCode}
+                  courseId={courseId}
+                  lessonId={currentLessonId || ""}
+                  studentId={studentId || "guest"}
+                  persistedState={{
+                    activeTab: aiActiveTab,
+                    setActiveTab: setAiActiveTab,
+                    messages: aiMessages,
+                    setMessages: setAiMessages,
+                    selectedConversationId,
+                    setSelectedConversationId,
+                    isConversationSidebarOpen,
+                    setIsConversationSidebarOpen,
+                    inputValue: aiInputValue,
+                    setInputValue: setAiInputValue,
+                    isThinking: isAiThinking,
+                    setIsThinking: setIsAiThinking,
+                    typedMessages,
+                    setTypedMessages,
+                  }}
+                />
+              </TabsContent>
+              <TabsContent value="notes" className="h-full m-0 p-0 flex-1">
+                <IdeNotesPanel courseId={courseId} studentId={studentId} />
+              </TabsContent>
+            </div>
+          </Tabs>
         ) : (
           // Desktop: AI (65%) + Notes (35%) side by side
-          <ResizablePanelGroup direction="horizontal" className="h-full w-full">
-            <ResizablePanel defaultSize={65} minSize={45} className="overflow-hidden">
+          <ResizablePanelGroup
+            direction="horizontal"
+            className="h-full w-full gap-2"
+          >
+            <ResizablePanel
+              defaultSize={65}
+              minSize={45}
+              className="h-full bg-card border border-border rounded-xl overflow-hidden shadow-sm"
+            >
               <IdeAiAssistant
                 code={mainCode}
                 courseId={courseId}
                 lessonId={currentLessonId || ""}
                 studentId={studentId || "guest"}
+                persistedState={{
+                  activeTab: aiActiveTab,
+                  setActiveTab: setAiActiveTab,
+                  messages: aiMessages,
+                  setMessages: setAiMessages,
+                  selectedConversationId,
+                  setSelectedConversationId,
+                  isConversationSidebarOpen,
+                  setIsConversationSidebarOpen,
+                  inputValue: aiInputValue,
+                  setInputValue: setAiInputValue,
+                  isThinking: isAiThinking,
+                  setIsThinking: setIsAiThinking,
+                  typedMessages,
+                  setTypedMessages,
+                }}
               />
             </ResizablePanel>
-            <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={35} minSize={25} className="overflow-hidden">
+            <ResizableHandle
+              withHandle
+              className="bg-border/20 w-1 hover:bg-primary/20 transition-colors"
+            />
+            <ResizablePanel
+              defaultSize={35}
+              minSize={25}
+              className="h-full bg-card border border-border rounded-xl overflow-hidden shadow-sm"
+            >
               <IdeNotesPanel courseId={courseId} studentId={studentId} />
             </ResizablePanel>
           </ResizablePanelGroup>
@@ -250,11 +331,11 @@ export default function IdeWorkspace({
 
   // ─── IDE MODE SCREEN ───────────────────────────────────────────────────────
   return (
-    <div
-      className="flex flex-col h-full overflow-hidden"
-      style={{ animation: "fadeIn 0.25s ease" }}
-    >
-      <div className="flex-1 overflow-hidden relative min-w-0 p-2 bg-muted/10" data-ide-workspace="true">
+    <div className="flex flex-col h-full overflow-hidden">
+      <div
+        className="flex-1 overflow-hidden relative min-w-0 p-2 bg-muted/10"
+        data-ide-workspace="true"
+      >
         {isMobile ? (
           <Tabs
             value={activeTab}
@@ -262,26 +343,39 @@ export default function IdeWorkspace({
             className="h-full flex flex-col min-w-0"
           >
             <TabsList className="w-full grid grid-cols-3 bg-muted/50 p-1.5 rounded-full mb-3 border border-border/40">
-              <TabsTrigger 
-                value="slides" 
+              <TabsTrigger
+                value="slides"
                 className="flex items-center justify-center gap-1.5 rounded-full py-2 data-[state=active]:text-white transition-all duration-300"
-                style={{ backgroundColor: activeTab === "slides" ? accentColor : "transparent" }}
+                style={{
+                  backgroundColor:
+                    activeTab === "slides" ? accentColor : "transparent",
+                }}
               >
                 <Book size={16} />
-                <span className="text-[10px] font-bold uppercase tracking-tight">Slides</span>
+                <span className="text-[10px] font-bold uppercase tracking-tight">
+                  Slides
+                </span>
               </TabsTrigger>
-              <TabsTrigger 
-                value="editor" 
+              <TabsTrigger
+                value="editor"
                 className="flex items-center justify-center gap-1.5 rounded-full py-2 data-[state=active]:text-white transition-all duration-300"
-                style={{ backgroundColor: activeTab === "editor" ? accentColor : "transparent" }}
+                style={{
+                  backgroundColor:
+                    activeTab === "editor" ? accentColor : "transparent",
+                }}
               >
                 <Code size={16} />
-                <span className="text-[10px] font-bold uppercase tracking-tight">Editor</span>
+                <span className="text-[10px] font-bold uppercase tracking-tight">
+                  Editor
+                </span>
               </TabsTrigger>
-              <TabsTrigger 
-                value="preview" 
+              <TabsTrigger
+                value="preview"
                 className="flex items-center justify-center gap-1.5 rounded-full py-2 data-[state=active]:text-white transition-all duration-300"
-                style={{ backgroundColor: activeTab === "preview" ? accentColor : "transparent" }}
+                style={{
+                  backgroundColor:
+                    activeTab === "preview" ? accentColor : "transparent",
+                }}
               >
                 {isPythonCourse ? <Terminal size={16} /> : <Play size={16} />}
                 <span className="text-[10px] font-bold uppercase tracking-tight">
@@ -295,7 +389,7 @@ export default function IdeWorkspace({
                 <IdeSlides
                   slides={slides}
                   courseId={courseId}
-                  lessons={lessons}
+                  lessons={lessonsWithStatus}
                   currentLessonId={currentLessonId}
                   onSelectLesson={onSelectLesson}
                   initialSlideIndex={initialSlideIndex}
@@ -306,6 +400,7 @@ export default function IdeWorkspace({
               <TabsContent value="editor" className="h-full m-0 p-0">
                 <IdeEditor
                   setMainCode={setMainCode}
+                  defaultValue={mainCode}
                   startingCode={getStartingCode()}
                   externalCode={externalCode}
                   courseLanguage={courseLanguage}
@@ -324,7 +419,10 @@ export default function IdeWorkspace({
             </div>
           </Tabs>
         ) : (
-          <ResizablePanelGroup direction="horizontal" className="h-full min-w-0 gap-2">
+          <ResizablePanelGroup
+            direction="horizontal"
+            className="h-full min-w-0 gap-2"
+          >
             {currentLayout !== "focus" && (
               <>
                 <ResizablePanel
@@ -335,7 +433,7 @@ export default function IdeWorkspace({
                   <IdeSlides
                     slides={slides}
                     courseId={courseId}
-                    lessons={lessons}
+                    lessons={lessonsWithStatus}
                     currentLessonId={currentLessonId}
                     onSelectLesson={onSelectLesson}
                     initialSlideIndex={initialSlideIndex}
@@ -353,6 +451,7 @@ export default function IdeWorkspace({
             >
               <IdeEditor
                 setMainCode={setMainCode}
+                defaultValue={mainCode}
                 startingCode={getStartingCode()}
                 externalCode={externalCode}
                 courseLanguage={courseLanguage}
@@ -368,10 +467,7 @@ export default function IdeWorkspace({
               className="min-w-0 overflow-hidden"
             >
               {isPythonCourse ? (
-                <IdeConsole
-                  code={mainCode}
-                  courseLanguage={courseLanguage}
-                />
+                <IdeConsole code={mainCode} courseLanguage={courseLanguage} />
               ) : (
                 <IdePreview mainCode={mainCode} />
               )}

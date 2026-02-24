@@ -17,7 +17,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Coins, Moon, Settings, Sun, Flame, Save, Download, MoreVertical } from "lucide-react";
+import {
+  Coins,
+  Moon,
+  Settings,
+  Sun,
+  Flame,
+  Save,
+  Download,
+  MoreVertical,
+} from "lucide-react";
 import { useEffect } from "react";
 import { studentApi } from "@/lib/api/student";
 import Logo from "@/public/assets/images/logo.png";
@@ -199,12 +208,12 @@ ${html}
     }
   };
 
-  // Custom 1140px mobile mode toggle
+  // From 1400px down: use options dropdown for Save/Download to avoid overlap with mode toggle
   const [isCompact, setIsCompact] = useState(false);
 
   useEffect(() => {
     const checkCompact = () => {
-      setIsCompact(window.innerWidth < 1140);
+      setIsCompact(window.innerWidth < 1400);
     };
     checkCompact();
     window.addEventListener("resize", checkCompact);
@@ -216,211 +225,260 @@ ${html}
 
   return (
     <>
-      <header className="h-14 md:h-16 w-full border-b flex items-center justify-between px-3 md:px-6 transition-all duration-200 bg-background relative shadow-sm">
-        {/* Left: Logo + Course Title */}
-        <div className="flex items-center gap-2 md:gap-6 flex-1 h-full min-w-0">
-          <a href={getNavigationUrl()} className="h-full flex items-center transition-transform hover:scale-105 active:scale-95 shrink-0">
-            <div className="relative">
-              <Image
-                src={Logo}
-                alt="BeBlocky Logo"
-                width={120}
-                height={180}
-                className="h-10 md:h-12 w-auto object-contain"
-                priority
-              />
-              {theme === "dark" && (
-                <div className="absolute inset-0 bg-[#892FFF]/15 blur-2xl -z-10 rounded-full" />
-              )}
-            </div>
-          </a>
-          
-          <div className="h-8 md:h-10 w-px bg-border/60 mx-1 hidden sm:block" />
-          
-          {courseTitle && (
-            <div className={cn("hidden lg:block truncate max-w-[200px] xl:max-w-md", isCompact && "lg:hidden")}>
-              <h1 className="text-base md:text-lg font-black text-foreground tracking-tight truncate">
-                {courseTitle}
-              </h1>
-            </div>
-          )}
-        </div>
+      <div className="px-2 pt-2">
+        <header className="h-14 md:h-16 w-full border flex items-center justify-between px-3 md:px-6 transition-all duration-200 bg-background relative shadow-sm rounded-xl">
+          {/* Left: Logo + Course Title */}
+          <div className="flex items-center gap-2 md:gap-6 flex-1 h-full min-w-0">
+            <a
+              href={getNavigationUrl()}
+              className="h-full flex items-center transition-transform hover:scale-105 active:scale-95 shrink-0"
+            >
+              <div className="relative">
+                <Image
+                  src={Logo}
+                  alt="BeBlocky Logo"
+                  width={120}
+                  height={180}
+                  className="h-10 md:h-12 w-auto object-contain"
+                  priority
+                />
+                {theme === "dark" && (
+                  <div className="absolute inset-0 bg-[#892FFF]/15 blur-2xl -z-10 rounded-full" />
+                )}
+              </div>
+            </a>
 
-        {/* Center: Mode Toggle — intelligently positioned */}
-        {onModeChange && (
-          <div className={cn("flex items-center justify-center transition-all duration-300", isCompact ? "flex-1" : "flex-none")}>
-            <div className={cn("transition-all duration-300", !isCompact ? "sm:absolute sm:left-1/2 sm:-translate-x-1/2" : "flex items-center")}>
-              <div className={cn("transition-transform origin-center", isCompact ? "scale-[0.85] xs:scale-90" : "scale-100")}>
-                <IdeModeToggle mode={ideMode} onModeChange={onModeChange} />
+            <div className="h-8 md:h-10 w-px bg-border/60 mx-1 hidden sm:block" />
+
+            {courseTitle && (
+              <div
+                className={cn(
+                  "hidden lg:block truncate max-w-[200px] xl:max-w-md",
+                  isCompact && "lg:hidden",
+                )}
+              >
+                <h1 className="text-base md:text-lg font-black text-foreground tracking-tight truncate">
+                  {courseTitle}
+                </h1>
+              </div>
+            )}
+          </div>
+
+          {/* Center: Mode Toggle — intelligently positioned */}
+          {onModeChange && (
+            <div
+              className={cn(
+                "flex items-center justify-center transition-all duration-300",
+                isCompact ? "flex-1" : "flex-none",
+              )}
+            >
+              <div
+                className={cn(
+                  "transition-all duration-300",
+                  !isCompact
+                    ? "sm:absolute sm:left-1/2 sm:-translate-x-1/2"
+                    : "flex items-center",
+                )}
+              >
+                <div
+                  className={cn(
+                    "transition-transform origin-center",
+                    isCompact ? "scale-[0.85] xs:scale-90" : "scale-100",
+                  )}
+                >
+                  <IdeModeToggle mode={ideMode} onModeChange={onModeChange} />
+                </div>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* Right Section */}
-        <div className="flex items-center gap-1.5 md:gap-3 flex-1 justify-end min-w-0">
-          {/* Mobile Utility Actions — now triggered at 1140px */}
-          {showSaveButtons && isCompact && (
-            <div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full border border-border/40 bg-muted/20">
-                    <MoreVertical size={18} />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52 p-2 rounded-2xl border-border/40 shadow-xl backdrop-blur-md bg-background/95">
-                  <DropdownMenuItem 
-                    onClick={() => setSaveDialogOpen(true)}
-                    className="flex items-center gap-3 p-3 rounded-xl cursor-pointer focus:bg-muted/50 transition-colors"
-                  >
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center bg-muted/30">
-                      <Save size={16} style={{ color: accentColor }} />
-                    </div>
-                    <span className="font-bold text-sm">Save Code</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    onClick={() => setDownloadDialogOpen(true)}
-                    className="flex items-center gap-3 p-3 rounded-xl cursor-pointer focus:bg-muted/50 transition-colors"
-                  >
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center bg-muted/30">
-                      <Download size={16} />
-                    </div>
-                    <span className="font-bold text-sm">Download ZIP</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
           )}
 
-          {/* Save & Download — Hidden if compact (width < 1140px) */}
-          {showSaveButtons && !isCompact && (
-            <div className="flex items-center gap-2">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <LoadingButton
-                      variant="brand"
-                      size="sm"
+          {/* Right Section */}
+          <div className="flex items-center gap-1.5 md:gap-3 flex-1 justify-end min-w-0">
+            {/* Save & Download in options menu from 1400px down (avoids overlap with mode toggle) */}
+            {showSaveButtons && isCompact && (
+              <div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-full border border-border/40 bg-muted/20"
+                    >
+                      <MoreVertical size={18} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    className="w-52 p-2 rounded-2xl border-border/40 shadow-xl backdrop-blur-md bg-background/95"
+                  >
+                    <DropdownMenuItem
                       onClick={() => setSaveDialogOpen(true)}
-                      loading={isSaving}
-                      loadingText=""
-                      style={{ backgroundColor: accentColor }}
-                      className="h-9 rounded-full px-5 font-bold transition-all hover:shadow-lg hover:scale-[1.02] border-none"
+                      className="flex items-center gap-3 p-3 rounded-xl cursor-pointer focus:bg-muted/50 transition-colors"
                     >
-                      <Save size={16} />
-                      <span className="ml-1.5 text-sm">Save Code</span>
-                    </LoadingButton>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Save your code (Ctrl+S)</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <LoadingButton
-                      variant="outline"
-                      size="sm"
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center bg-muted/30">
+                        <Save size={16} style={{ color: accentColor }} />
+                      </div>
+                      <span className="font-bold text-sm">Save Code</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
                       onClick={() => setDownloadDialogOpen(true)}
-                      loading={isDownloading}
-                      loadingText=""
-                      className="h-9 rounded-full px-4 font-bold transition-all hover:bg-muted/50 border-border/60"
+                      className="flex items-center gap-3 p-3 rounded-xl cursor-pointer focus:bg-muted/50 transition-colors"
                     >
-                      <Download size={16} />
-                      <span className="ml-1.5 text-sm">Download</span>
-                    </LoadingButton>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Download project as ZIP</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-          )}
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center bg-muted/30">
+                        <Download size={16} />
+                      </div>
+                      <span className="font-bold text-sm">Download ZIP</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
 
-          {!isCompact && (
-            <>
-              <div className="w-px h-6 bg-border/60 mx-0.5 md:mx-1 hidden md:block" />
-
-              {shouldShowCoins && (
-                <div className="flex items-center gap-1 md:gap-2">
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className="flex items-center gap-1 md:gap-1.5 bg-amber-50 text-amber-900 border border-amber-200/50 dark:bg-amber-900/10 dark:text-amber-300 px-2 md:px-3 py-1.5 rounded-full text-[10px] md:text-xs font-black transition-all hover:scale-105 shadow-sm active:scale-95">
-                          <span className="tabular-nums">{coins.toFixed(0)}</span>
-                          <Coins size={14} className="text-amber-500 fill-amber-500/20" />
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Your learning coins</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className="flex items-center gap-1 md:gap-1.5 bg-orange-50 text-orange-900 border border-orange-200/50 dark:bg-orange-900/10 dark:text-orange-300 px-2 md:px-3 py-1.5 rounded-full text-[10px] md:text-xs font-black transition-all hover:scale-105 shadow-sm active:scale-95">
-                          <Flame size={14} style={{ color: accentColor }} />
-                          <span className="tabular-nums">{streak}</span>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Your coding streak</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-              )}
-
-              <div className="flex items-center gap-0.5 md:gap-1">
+            {/* Save & Download — visible only above 1400px */}
+            {showSaveButtons && !isCompact && (
+              <div className="flex items-center gap-2">
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-                        className="rounded-full h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-foreground transition-all hover:bg-muted/50 shrink-0"
+                      <LoadingButton
+                        variant="brand"
+                        size="sm"
+                        onClick={() => setSaveDialogOpen(true)}
+                        loading={isSaving}
+                        loadingText=""
+                        style={{ backgroundColor: accentColor }}
+                        className="h-9 rounded-full px-5 font-bold transition-all hover:shadow-lg hover:scale-[1.02] border-none"
                       >
-                        {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
-                      </Button>
+                        <Save size={16} />
+                        <span className="ml-1.5 text-sm">Save Code</span>
+                      </LoadingButton>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Switch to {theme === "light" ? "dark" : "light"} mode</p>
+                      <p>Save your code (Ctrl+S)</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <LoadingButton
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setDownloadDialogOpen(true)}
+                        loading={isDownloading}
+                        loadingText=""
+                        className="h-9 rounded-full px-4 font-bold transition-all hover:bg-muted/50 border-border/60"
+                      >
+                        <Download size={16} />
+                        <span className="ml-1.5 text-sm">Download</span>
+                      </LoadingButton>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Download project as ZIP</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </div>
-            </>
-          )}
-
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onSettingsClick || openSettings}
-            className="rounded-full h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-foreground transition-all hover:bg-muted/50 shrink-0"
-          >
-            <Settings className="h-4 w-4 md:h-5 md:w-5" />
-          </Button>
-
-          <div className="ml-1 flex items-center shrink-0 transition-transform hover:scale-105 active:scale-95 cursor-pointer">
-            {userData?.initials ? (
-              <div 
-                className="w-7 h-7 md:w-8 md:h-8 text-white rounded-full flex items-center justify-center text-[10px] md:text-xs font-bold shadow-sm border-2 border-background"
-                style={{ background: `linear-gradient(to bottom right, ${accentColor}, ${theme === 'dark' ? '#b794f4' : '#ea580c'})` }}
-              >
-                {userData.initials}
-              </div>
-            ) : (
-              <div className="w-7 h-7 md:w-8 md:h-8 bg-muted rounded-full animate-pulse" />
             )}
+
+            {!isCompact && (
+              <>
+                <div className="w-px h-6 bg-border/60 mx-0.5 md:mx-1 hidden md:block" />
+
+                {shouldShowCoins && (
+                  <div className="flex items-center gap-1 md:gap-2">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center gap-1 md:gap-1.5 bg-amber-50 text-amber-900 border border-amber-200/50 dark:bg-amber-900/10 dark:text-amber-300 px-2 md:px-3 py-1.5 rounded-full text-[10px] md:text-xs font-black transition-all hover:scale-105 shadow-sm active:scale-95">
+                            <span className="tabular-nums">
+                              {coins.toFixed(0)}
+                            </span>
+                            <Coins
+                              size={14}
+                              className="text-amber-500 fill-amber-500/20"
+                            />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Your learning coins</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center gap-1 md:gap-1.5 bg-orange-50 text-orange-900 border border-orange-200/50 dark:bg-orange-900/10 dark:text-orange-300 px-2 md:px-3 py-1.5 rounded-full text-[10px] md:text-xs font-black transition-all hover:scale-105 shadow-sm active:scale-95">
+                            <Flame size={14} style={{ color: accentColor }} />
+                            <span className="tabular-nums">{streak}</span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Your coding streak</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-0.5 md:gap-1">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() =>
+                            setTheme(theme === "light" ? "dark" : "light")
+                          }
+                          className="rounded-full h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-foreground transition-all hover:bg-muted/50 shrink-0"
+                        >
+                          {theme === "light" ? (
+                            <Moon size={18} />
+                          ) : (
+                            <Sun size={18} />
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>
+                          Switch to {theme === "light" ? "dark" : "light"} mode
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+              </>
+            )}
+
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onSettingsClick || openSettings}
+              className="rounded-full h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-foreground transition-all hover:bg-muted/50 shrink-0"
+            >
+              <Settings className="h-4 w-4 md:h-5 md:w-5" />
+            </Button>
+
+            <div className="ml-1 flex items-center shrink-0 transition-transform hover:scale-105 active:scale-95 cursor-pointer">
+              {userData?.initials ? (
+                <div
+                  className="w-7 h-7 md:w-8 md:h-8 text-white rounded-full flex items-center justify-center text-[10px] md:text-xs font-bold shadow-sm border-2 border-background"
+                  style={{
+                    background: `linear-gradient(to bottom right, ${accentColor}, ${theme === "dark" ? "#b794f4" : "#ea580c"})`,
+                  }}
+                >
+                  {userData.initials}
+                </div>
+              ) : (
+                <div className="w-7 h-7 md:w-8 md:h-8 bg-muted rounded-full animate-pulse" />
+              )}
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      </div>
 
       {/* Confirmation dialogs */}
       <ConfirmationDialog

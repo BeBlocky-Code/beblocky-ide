@@ -50,6 +50,7 @@ interface CodeState {
 export default function IdeEditor({
   setMainCode,
   startingCode = "",
+  defaultValue = "",
   externalCode,
   courseLanguage = "web",
   onLoadMyCode,
@@ -57,6 +58,7 @@ export default function IdeEditor({
 }: {
   setMainCode: (code: string) => void;
   startingCode?: string;
+  defaultValue?: string;
   externalCode?: string | null;
   courseLanguage?: string;
   onLoadMyCode?: () => void;
@@ -77,21 +79,24 @@ export default function IdeEditor({
   const normalizedCourseLanguage = (courseLanguage || "web").toLowerCase();
   const isPythonCourse = normalizedCourseLanguage === "python";
 
-  // Initialize with starting code if provided
+  // Initialize with starting code or defaultValue if provided
   useEffect(() => {
-    if (startingCode && !initializedRef.current) {
-      try {
-        setCode(
-          isPythonCourse
-            ? extractPythonCode(startingCode)
-            : extractCodeSections(startingCode)
-        );
-        initializedRef.current = true;
-      } catch (error) {
-        console.error("Error parsing starting code:", error);
+    if (!initializedRef.current) {
+      const initialValue = defaultValue || startingCode;
+      if (initialValue) {
+        try {
+          setCode(
+            isPythonCourse
+              ? extractPythonCode(initialValue)
+              : extractCodeSections(initialValue)
+          );
+          initializedRef.current = true;
+        } catch (error) {
+          console.error("Error parsing initial code:", error);
+        }
       }
     }
-  }, [startingCode, isPythonCourse]);
+  }, [startingCode, defaultValue, isPythonCourse]);
 
   // Load external code when provided (e.g., "Load My Code" action)
   useEffect(() => {
@@ -484,12 +489,26 @@ function generateHtmlTemplate({
 }
 
 function extractCodeSections(source: string): CodeState {
-  const htmlMatch = /<body>([\s\S]*?)<\/body>/i.exec(source);
-  const cssMatch = /<style>([\s\S]*?)<\/style>/i.exec(source);
-  const jsMatch = /<script>([\s\S]*?)<\/script>/i.exec(source);
+  // Use non-greedy match for body content to avoid capturing outside body
+  const htmlMatch = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(source);
+  const cssMatch = /<style[^>]*>([\s\S]*?)<\/style>/i.exec(source);
+  const jsMatch = /<script[^>]*>([\s\S]*?)<\/script>/i.exec(source);
+
+  // When extracting HTML, we want to strip the specific script/style tags we might have injected
+  let htmlContent = htmlMatch ? htmlMatch[1].trim() : "";
+  
+  // Actually, the issue is that our generateHtmlTemplate puts <script> INSIDE <body>
+  // and <style> inside <head>.
+  // extractCodeSections regex for jsMatch will find the <script> inside the <body>.
+  // But our htmlMatch will also find that <script> inside the body.
+  // We need to remove the <script> tag from the htmlContent if it exists.
+  
+  if (htmlContent) {
+    htmlContent = htmlContent.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "").trim();
+  }
 
   return {
-    htmlCode: htmlMatch ? htmlMatch[1].trim() : "",
+    htmlCode: htmlContent,
     cssCode: cssMatch ? cssMatch[1].trim() : "",
     jsCode: jsMatch ? jsMatch[1].trim() : "",
     pythonCode: "",

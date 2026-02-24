@@ -68,7 +68,16 @@ export default function IdeSlides({
   const [currentSlideIndex, setCurrentSlideIndex] = useState(initialSlideIndex);
   const [activeTab, setActiveTab] = useState("content");
   const [copied, setCopied] = useState(false);
+  const [shouldAnimate, setShouldAnimate] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const hasLoadedInit = sessionStorage.getItem("ide_slides_loaded");
+    if (!hasLoadedInit) {
+      setShouldAnimate(true);
+      sessionStorage.setItem("ide_slides_loaded", "true");
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -79,6 +88,7 @@ export default function IdeSlides({
   }, []);
 
   useEffect(() => {
+    if (orderedSlides.length === 0) return;
     const nextIndex = Number.isFinite(initialSlideIndex) ? initialSlideIndex : 0;
     const clampedIndex = Math.max(0, Math.min(nextIndex, orderedSlides.length - 1));
     setCurrentSlideIndex(clampedIndex);
@@ -152,9 +162,10 @@ export default function IdeSlides({
                     currentLessonId={currentLessonId}
                     onSelectLesson={onSelectLesson}
                     lessons={lessons.map((lesson: any) => ({
-                      _id: lesson._id?.toString(),
+                      _id: lesson._id?.toString() || lesson.id?.toString(),
                       title: lesson.title,
                       description: lesson.description,
+                      status: lesson.status,
                     }))}
                   />
                 ) : (
@@ -208,7 +219,10 @@ export default function IdeSlides({
 
         <TabsContent
           value="content"
-          className="flex-1 overflow-hidden m-0 p-0 min-w-0 animate-in fade-in duration-300"
+          className={cn(
+            "flex-1 overflow-hidden m-0 p-0 min-w-0",
+            shouldAnimate && "animate-in fade-in duration-300"
+          )}
         >
           <div className="h-full scrollbar-hide">
             <IdeMarkdownPreview content={currentSlide.content || ""} />
@@ -217,7 +231,10 @@ export default function IdeSlides({
 
         <TabsContent
           value="code"
-          className="flex-1 overflow-hidden m-0 p-0 min-w-0 animate-in fade-in duration-300"
+          className={cn(
+            "flex-1 overflow-hidden m-0 p-0 min-w-0",
+            shouldAnimate && "animate-in fade-in duration-300"
+          )}
         >
           <div className="h-full overflow-y-auto scrollbar-hide p-4 space-y-4">
             <h3 className="text-sm font-bold flex items-center gap-2 text-muted-foreground pb-2 border-b border-border/40">

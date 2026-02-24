@@ -712,7 +712,7 @@ export default function LearnPage() {
             <SettingsProvider>
               <AIProvider>
               <div className="flex flex-col h-screen w-screen overflow-hidden">
-                <div className="p-2">
+               
                 <IdeHeader
                   courseTitle={currentCourseTitle}
                   userData={userData || undefined}
@@ -724,7 +724,7 @@ export default function LearnPage() {
                   mainCode={mainCode}
                   courseLanguage={courseLanguage}
                 />
-                </div>
+                
 
                 <div className="flex-1 overflow-hidden relative">
                   <IdeWorkspace
