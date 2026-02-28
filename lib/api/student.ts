@@ -1,30 +1,63 @@
-import { apiCallWithAuth } from "@/lib/api/utils";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "https://api.beblocky.com";
 
-// Student API calls (session-based: credentials + Bearer token)
+class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+async function apiCall<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const url = `${API_BASE_URL}${endpoint}`;
+
+  const response = await fetch(url, {
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+    ...options,
+  });
+
+  if (!response.ok) {
+    throw new ApiError(
+      response.status,
+      `API call failed: ${response.statusText}`
+    );
+  }
+
+  return response.json();
+}
+
+// Student API calls
 export const studentApi = {
+  // Get student by email
   getByEmail: (email: string) =>
-    apiCallWithAuth<any>(`/students/email/${encodeURIComponent(email)}`),
+    apiCall<any>(`/students/email/${encodeURIComponent(email)}`),
 
-  getByUserId: (userId: string) =>
-    apiCallWithAuth<any>(`/students/user/${userId}`),
+  // Get student by user ID
+  getByUserId: (userId: string) => apiCall<any>(`/students/user/${userId}`),
 
-  getStreak: (id: string) => apiCallWithAuth<number>(`/students/${id}/streak`),
+  getStreak: (id: string) => apiCall<number>(`/students/${id}/streak`),
   getCodingStreak: (id: string) =>
-    apiCallWithAuth<{ streak: number }>(`/students/${id}/coding-streak`),
+    apiCall<{ streak: number }>(`/students/${id}/coding-streak`),
   updateActivity: (id: string, data: Record<string, unknown>) =>
-    apiCallWithAuth<Record<string, unknown>>(`/students/${id}/activity`, {
+    apiCall<Record<string, unknown>>(`/students/${id}/activity`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
   getTotalCoins: (id: string) =>
-    apiCallWithAuth<{ total: number }>(`/students/${id}/coins/total`),
+    apiCall<{ total: number }>(`/students/${id}/coins/total`),
   addCoins: (id: string, data: Record<string, unknown>) =>
-    apiCallWithAuth<Record<string, unknown>>(`/students/${id}/coins/add`, {
+    apiCall<Record<string, unknown>>(`/students/${id}/coins/add`, {
       method: "POST",
       body: JSON.stringify(data),
     }),
   updateTimeSpent: (id: string, data: Record<string, unknown>) =>
-    apiCallWithAuth<Record<string, unknown>>(`/students/${id}/time-spent`, {
+    apiCall<Record<string, unknown>>(`/students/${id}/time-spent`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),

@@ -17,6 +17,7 @@ export const queryKeys = {
   students: {
     all: ["students"] as const,
     byEmail: (email: string) => ["students", "byEmail", email] as const,
+    byUserId: (userId: string) => ["students", "byUserId", userId] as const,
   },
   progress: {
     all: ["progress"] as const,

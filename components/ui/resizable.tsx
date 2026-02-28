@@ -7,14 +7,17 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 
 import { cn } from "@/lib/utils";
 
+type ResizablePanelGroupProps = React.ComponentProps<typeof Group> & {
+  /** @deprecated use orientation; mapped for compatibility */
+  direction?: "horizontal" | "vertical";
+};
+
 const ResizablePanelGroup = ({
   className,
   direction,
   orientation,
   ...props
-}: React.ComponentProps<typeof Group> & {
-  direction?: "horizontal" | "vertical";
-}) => (
+}: ResizablePanelGroupProps) => (
   <Group
     className={cn(
       "flex h-full w-full data-[panel-group-direction=vertical]:flex-col",

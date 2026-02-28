@@ -52,28 +52,6 @@ export function decryptEmail(encrypted: string): string {
   }
 }
 
-const COURSE_ID_SALT = "beblocky_2024";
-
-/**
- * Decrypt courseId from URL segment (same algorithm as clients encryptCourseId).
- * Returns empty string on failure so the learn page can show error or redirect.
- */
-export function decryptCourseId(encrypted: string): string {
-  if (!encrypted) return "";
-
-  try {
-    let restored = encrypted.replace(/-/g, "+").replace(/_/g, "/");
-    while (restored.length % 4) {
-      restored += "=";
-    }
-    const decoded = atob(restored);
-    const reversed = decoded.split("").reverse().join("");
-    return reversed.replace(COURSE_ID_SALT, "");
-  } catch {
-    return "";
-  }
-}
-
 /**
  * Generate user initials from name or email
  */
@@ -101,4 +79,25 @@ export function generateInitials(name: string, email?: string): string {
   }
 
   return "GU";
+}
+
+const COURSE_ID_SALT = "beblocky_2024";
+
+/**
+ * Decrypt courseId from URL (clients use encryptCourseId; same algorithm: restore base64, reverse, remove salt).
+ */
+export function decryptCourseId(encrypted: string): string {
+  if (!encrypted) return "";
+
+  try {
+    let restored = encrypted.replace(/-/g, "+").replace(/_/g, "/");
+    while (restored.length % 4) {
+      restored += "=";
+    }
+    const decoded = atob(restored);
+    const reversed = decoded.split("").reverse().join("");
+    return reversed.replace(COURSE_ID_SALT, "");
+  } catch {
+    return "";
+  }
 }
