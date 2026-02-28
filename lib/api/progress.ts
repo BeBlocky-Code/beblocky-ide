@@ -1,48 +1,20 @@
 import { IProgress, IStudentProgress } from "@/types/progress";
+import { ApiError, apiCallWithAuth } from "@/lib/api/utils";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "https://api.beblocky.com";
-
-class ApiError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
-
-async function apiCall<T>(
+async function progressApiCall<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
-
   try {
-    const response = await fetch(url, {
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers,
-      },
-      ...options,
-    });
-
-    if (!response.ok) {
-      throw new ApiError(
-        response.status,
-        `API call failed: ${response.statusText}`
-      );
-    }
-
-    return response.json();
+    return await apiCallWithAuth<T>(endpoint, options);
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;
     }
-
     // For development, return mock data if API is not available
     if (process.env.NODE_ENV === "development") {
       return getMockResponse(endpoint, options.method) as T;
     }
-
     throw new ApiError(
       0,
       `Network error: ${
@@ -89,9 +61,8 @@ function getMockResponse(endpoint: string, method?: string): any {
   return {};
 }
 
-// Progress API calls
+// Progress API calls (session-based: credentials + Bearer token)
 export const progressApi = {
-  // Create new progress record for student-course pair
   create: (data: {
     studentId: string;
     courseId: string;
@@ -102,45 +73,37 @@ export const progressApi = {
     timeSpent?: number;
     completed?: boolean;
   }) =>
-    apiCall<IProgress>("/progress", {
+    progressApiCall<IProgress>("/progress", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
-  // Get all progress records
-  getAll: () => apiCall<IProgress[]>("/progress"),
+  getAll: () => progressApiCall<IProgress[]>("/progress"),
 
-  // Get progress record by ID
-  getById: (id: string) => apiCall<IProgress>(`/progress/${id}`),
+  getById: (id: string) => progressApiCall<IProgress>(`/progress/${id}`),
 
-  // Get all progress records for a student
   getByStudent: (studentId: string) =>
-    apiCall<IProgress[]>(`/progress/student/${studentId}`),
+    progressApiCall<IProgress[]>(`/progress/student/${studentId}`),
 
-  // Get all progress records for a course
   getByCourse: (courseId: string) =>
-    apiCall<IProgress[]>(`/progress/course/${courseId}`),
+    progressApiCall<IProgress[]>(`/progress/course/${courseId}`),
 
-  // Get progress record for specific student and course
   getByStudentAndCourse: (studentId: string, courseId: string) =>
-    apiCall<IStudentProgress>(`/progress/${studentId}/${courseId}`),
+    progressApiCall<IStudentProgress>(`/progress/${studentId}/${courseId}`),
 
-  // Get completion percentage for student and course
   getCompletionPercentage: (studentId: string, courseId: string) =>
-    apiCall<{
+    progressApiCall<{
       percentage: number;
       completedLessons: number;
       totalLessons: number;
     }>(`/progress/${studentId}/${courseId}/percentage`),
 
-  // Update progress record
   update: (id: string, data: Record<string, unknown>) =>
-    apiCall<IProgress>(`/progress/${id}`, {
+    progressApiCall<IProgress>(`/progress/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
 
-  // Complete a lesson and update progress
   completeLesson: (
     id: string,
     data: {
@@ -148,12 +111,11 @@ export const progressApi = {
       timeSpent: number;
     }
   ) =>
-    apiCall<IProgress>(`/progress/${id}/complete-lesson`, {
+    progressApiCall<IProgress>(`/progress/${id}/complete-lesson`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
 
-  // Save code for a lesson
   saveCode: (
     id: string,
     data: {
@@ -162,12 +124,11 @@ export const progressApi = {
       code: string;
     }
   ) =>
-    apiCall<IProgress>(`/progress/${id}/save-code`, {
+    progressApiCall<IProgress>(`/progress/${id}/save-code`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
 
-  // Update time spent for current week
   updateTimeSpent: (
     id: string,
     data: {
@@ -177,14 +138,13 @@ export const progressApi = {
       lastAccessed?: string;
     }
   ) =>
-    apiCall<IProgress>(`/progress/${id}/time-spent`, {
+    progressApiCall<IProgress>(`/progress/${id}/time-spent`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
 
-  // Delete progress record
   delete: (id: string) =>
-    apiCall<void>(`/progress/${id}`, {
+    progressApiCall<void>(`/progress/${id}`, {
       method: "DELETE",
     }),
 };
