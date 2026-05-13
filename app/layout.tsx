@@ -4,8 +4,9 @@ import "highlight.js/styles/github-dark.min.css";
 import { QueryProvider } from "@/components/providers/query-provider";
 
 export const metadata: Metadata = {
-  title: "Beblocky IDE",
-  description: "Created with Beblocky",
+  title: "BeBlocky IDE",
+  description:
+    "Work through lesson steps, write code, and run it in the browser.",
 };
 
 export default function RootLayout({
