@@ -132,7 +132,7 @@ function HeadingWithCopy({
                   copyTimeoutRef.current = null;
                 }
                 setCopied(true);
-                copyTimeoutRef.current = window.setTimeout(() => {
+                copyTimeoutRef.current = setTimeout(() => {
                   copyTimeoutRef.current = null;
                   setCopied(false);
                 }, 1200);

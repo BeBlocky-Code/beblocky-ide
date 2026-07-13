@@ -88,9 +88,9 @@ function getMockAnalysis(data: {
       },
     ],
     totalPoints: 16,
-    analysisDate: new Date().toISOString(),
+    analysisDate: new Date(),
     isCompleted: true,
-  };
+  } as unknown as ICodeAnalysis;
 }
 
 // Mock responses for development when backend is not available

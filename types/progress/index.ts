@@ -61,10 +61,8 @@ export interface ISaveCodeDto {
   code: string;
 }
 
-// Time spent update DTO
-export interface IUpdateTimeSpentDto {
-  minutes: number;
-}
+// Time spent update DTO (see student/index.ts)
+export type { IUpdateTimeSpentDto } from "../student";
 
 // Completion percentage response
 export interface ICompletionPercentageResponse {

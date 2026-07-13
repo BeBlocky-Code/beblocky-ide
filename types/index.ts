@@ -7,6 +7,5 @@ export * from './subscription';
 export * from './lesson';
 export * from './slide';
 export * from './admin';
-export * from './certificate';
 export * from './class';
 export * from './progress';
