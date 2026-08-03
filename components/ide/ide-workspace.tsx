@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, {
+  useState,
+  useMemo,
+  useEffect,
+  useRef,
+  useCallback,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "./context/theme-provider";
 import {
@@ -14,7 +20,7 @@ import IdeSlides from "./ide-slides";
 import IdeEditor from "./ide-editor";
 import IdePreview from "./ide-preview";
 import IdeAiAssistant from "./ide-ai-assistant";
-import IdeConsole from "./ide-console";
+import IdeConsole, { type IdeConsoleHandle } from "./ide-console";
 import IdeNotesPanel from "./ide-notes-panel";
 import { Book, Code, Play, Bot, Terminal, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -38,6 +44,7 @@ export default function IdeWorkspace({
   studentId,
   ideMode = "ide",
   onIdeModeChange,
+  consoleRef,
 }: {
   slides: any[];
   courseId: string;
@@ -53,6 +60,7 @@ export default function IdeWorkspace({
   studentId?: string;
   ideMode?: "ide" | "ai";
   onIdeModeChange?: (mode: "ide" | "ai") => void;
+  consoleRef?: React.Ref<IdeConsoleHandle>;
 }) {
   const { theme } = useTheme();
   const isMobile = useMediaQuery("(max-width: 1000px)");
@@ -86,6 +94,32 @@ export default function IdeWorkspace({
   }, [mainCode]);
 
   const { toast } = useToast();
+
+  const innerConsoleRef = useRef<IdeConsoleHandle>(null);
+
+  const runFromShortcut = useCallback(() => {
+    if (isMobile && isPythonCourse) {
+      setActiveTab("preview");
+    }
+    innerConsoleRef.current?.run();
+  }, [isMobile, isPythonCourse]);
+
+  useEffect(() => {
+    if (!consoleRef) return;
+    const handle: IdeConsoleHandle = { run: runFromShortcut };
+    if (typeof consoleRef === "function") {
+      consoleRef(handle);
+      return () => {
+        void consoleRef(null);
+      };
+    }
+    const refObj =
+      consoleRef as React.MutableRefObject<IdeConsoleHandle | null>;
+    refObj.current = handle;
+    return () => {
+      refObj.current = null;
+    };
+  }, [consoleRef, runFromShortcut]);
 
   const progressQuery = useQuery({
     queryKey: queryKeys.progress.byStudentAndCourse(studentId ?? "", courseId),
@@ -409,9 +443,17 @@ export default function IdeWorkspace({
                 />
               </TabsContent>
 
-              <TabsContent value="preview" className="h-full m-0 p-0">
+              <TabsContent
+                value="preview"
+                className="h-full m-0 p-0"
+                forceMount={isPythonCourse ? true : undefined}
+              >
                 {isPythonCourse ? (
-                  <IdeConsole code={mainCode} courseLanguage={courseLanguage} />
+                  <IdeConsole
+                    ref={innerConsoleRef}
+                    code={mainCode}
+                    courseLanguage={courseLanguage}
+                  />
                 ) : (
                   <IdePreview mainCode={mainCode} />
                 )}
@@ -467,7 +509,11 @@ export default function IdeWorkspace({
               className="min-w-0 overflow-hidden"
             >
               {isPythonCourse ? (
-                <IdeConsole code={mainCode} courseLanguage={courseLanguage} />
+                <IdeConsole
+                  ref={innerConsoleRef}
+                  code={mainCode}
+                  courseLanguage={courseLanguage}
+                />
               ) : (
                 <IdePreview mainCode={mainCode} />
               )}

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import IdeWorkspace from "@/components/ide/ide-workspace";
+import type { IdeConsoleHandle } from "@/components/ide/ide-console";
 import IdeKeyboardShortcuts from "@/components/ide/ide-keyboard-shortcuts";
 import { ThemeProvider } from "@/components/ide/context/theme-provider";
 import { CoinProvider } from "@/components/ide/context/coin-context";
@@ -520,14 +521,10 @@ export default function LearnPage() {
     }
   };
 
-  // Update the handleRunCode function to actually run the code
+  const consoleRef = useRef<IdeConsoleHandle>(null);
+
   const handleRunCode = () => {
-    const consoleButton = document.querySelector(
-      '[data-console-toggle="true"]',
-    );
-    if (consoleButton) {
-      (consoleButton as HTMLElement).click();
-    }
+    consoleRef.current?.run();
   };
 
   // Simple language detection based on code patterns
@@ -764,6 +761,7 @@ export default function LearnPage() {
                     studentId={studentId || "guest"}
                     ideMode={ideMode}
                     onIdeModeChange={setIdeMode}
+                    consoleRef={consoleRef}
                   />
                 </div>
                 <IdeKeyboardShortcuts
