@@ -143,22 +143,67 @@ export default function IdeWorkspace({
     }
   }, [isMobile, currentLayout]);
 
-  // Lessons with completion status
+  // Lessons with completion status from completedLessons / completedSlides
   const lessonsWithStatus = useMemo(() => {
     if (!lessons) return [];
-    const progress = progressQuery.data as any;
-    const progressEntries = progress?.progress || [];
+    const progress = progressQuery.data as {
+      completedLessons?:
+        | Record<string, { isCompleted?: boolean }>
+        | Map<string, { isCompleted?: boolean }>;
+      completedSlides?:
+        | Record<string, { isCompleted?: boolean; lessonId?: string }>
+        | Map<string, { isCompleted?: boolean; lessonId?: string }>;
+      completionPercentage?: number;
+    } | null;
+
+    const completedLessonsRaw = progress?.completedLessons;
+    const completedLessonsRecord: Record<string, { isCompleted?: boolean }> =
+      completedLessonsRaw instanceof Map
+        ? Object.fromEntries(completedLessonsRaw.entries())
+        : (completedLessonsRaw as Record<string, { isCompleted?: boolean }>) ||
+          {};
+
+    const completedSlidesRaw = progress?.completedSlides;
+    const completedSlidesRecord: Record<
+      string,
+      { isCompleted?: boolean; lessonId?: string }
+    > =
+      completedSlidesRaw instanceof Map
+        ? Object.fromEntries(completedSlidesRaw.entries())
+        : (completedSlidesRaw as Record<
+            string,
+            { isCompleted?: boolean; lessonId?: string }
+          >) || {};
 
     return lessons.map((lesson) => {
       const lessonId =
         (lesson as any)._id?.toString() || (lesson as any).id?.toString();
-      const progressEntry = progressEntries.find(
-        (p: any) => p.lessonId?.toString() === lessonId,
-      );
+
+      const lessonMarkedComplete =
+        !!completedLessonsRecord[lessonId]?.isCompleted;
+
+      const lessonSlideIds = (
+        ((lesson as any).slides as any[]) || []
+      )
+        .map((s) => s?._id?.toString?.() || s?.toString?.())
+        .filter(Boolean) as string[];
+
+      const allSlidesDone =
+        lessonSlideIds.length > 0 &&
+        lessonSlideIds.every(
+          (slideId) => completedSlidesRecord[slideId]?.isCompleted,
+        );
 
       let status: "completed" | "in-progress" | "locked" = "locked";
-      if (progressEntry?.completed) status = "completed";
+      if (lessonMarkedComplete || allSlidesDone) status = "completed";
       else if (lessonId === currentLessonId) status = "in-progress";
+      else if (
+        lessonSlideIds.some(
+          (slideId) => completedSlidesRecord[slideId]?.isCompleted,
+        )
+      ) {
+        status = "in-progress";
+      }
 
       return {
         ...lesson,
@@ -166,6 +211,36 @@ export default function IdeWorkspace({
       };
     });
   }, [lessons, progressQuery.data, currentLessonId]);
+
+  const slideProgressStats = useMemo(() => {
+    const progress = progressQuery.data as {
+      completionPercentage?: number;
+      completedSlides?: Record<string, { isCompleted?: boolean }> | Map<string, unknown>;
+    } | null;
+
+    const slidesRaw = progress?.completedSlides;
+    const slidesRecord =
+      slidesRaw instanceof Map
+        ? Object.fromEntries(slidesRaw.entries())
+        : slidesRaw || {};
+    const completedSlides = Object.values(slidesRecord).filter(
+      (s: any) => s?.isCompleted,
+    ).length;
+
+    const totalSlides = (lessons || []).reduce((sum, lesson) => {
+      const count = ((lesson as any).slides as any[])?.length || 0;
+      return sum + count;
+    }, 0);
+
+    const percentage =
+      typeof progress?.completionPercentage === "number"
+        ? progress.completionPercentage
+        : totalSlides > 0
+          ? (completedSlides / totalSlides) * 100
+          : 0;
+
+    return { percentage, completedSlides, totalSlides };
+  }, [progressQuery.data, lessons]);
 
   const getStartingCode = () => {
     const firstSlide = slides?.[0];
@@ -428,6 +503,7 @@ export default function IdeWorkspace({
                   onSelectLesson={onSelectLesson}
                   initialSlideIndex={initialSlideIndex}
                   onSlideChange={onSlideChange}
+                  courseProgress={slideProgressStats}
                 />
               </TabsContent>
 
@@ -480,6 +556,7 @@ export default function IdeWorkspace({
                     onSelectLesson={onSelectLesson}
                     initialSlideIndex={initialSlideIndex}
                     onSlideChange={onSlideChange}
+                    courseProgress={slideProgressStats}
                   />
                 </ResizablePanel>
                 <ResizableHandle withHandle />

@@ -35,6 +35,7 @@ export default function IdeSlides({
   onSelectLesson,
   initialSlideIndex = 0,
   onSlideChange,
+  courseProgress,
 }: {
   slides: Slide[];
   courseId: string;
@@ -43,6 +44,11 @@ export default function IdeSlides({
   onSelectLesson?: (lessonId: string) => void;
   initialSlideIndex?: number;
   onSlideChange?: (slideIndex: number) => void;
+  courseProgress?: {
+    percentage: number;
+    completedSlides: number;
+    totalSlides: number;
+  };
 }) {
   const orderedSlides = useMemo(() => {
     const toOrder = (s: any) => {
@@ -107,6 +113,12 @@ export default function IdeSlides({
       const newIndex = currentSlideIndex + 1;
       setCurrentSlideIndex(newIndex);
       onSlideChange?.(newIndex);
+      return;
+    }
+
+    // Last slide: "Finished" marks the current slide complete
+    if (totalSlides > 0) {
+      onSlideChange?.(currentSlideIndex);
     }
   };
 
@@ -167,6 +179,7 @@ export default function IdeSlides({
                       description: lesson.description,
                       status: lesson.status,
                     }))}
+                    courseProgress={courseProgress}
                   />
                 ) : (
                   <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
@@ -299,7 +312,6 @@ export default function IdeSlides({
             variant="brand"
             size="sm"
             onClick={goToNextSlide}
-            disabled={currentSlideIndex === totalSlides - 1}
             style={{ backgroundColor: accentColor }}
             className="rounded-full flex-[1.5] h-9 font-bold text-xs shadow-md transition-all group border-none"
           >

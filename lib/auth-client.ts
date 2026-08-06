@@ -93,6 +93,21 @@ export async function getSession(): Promise<{
   return { data: { valid: false }, error };
 }
 
+/**
+ * Headers for calling beblocky-api endpoints protected by BearerAuthGuard.
+ * Session cookies are host-only, so cross-origin API calls need Bearer.
+ */
+export async function getApiAuthHeaders(): Promise<Record<string, string>> {
+  const { data: session } = await getSession();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (session?.token) {
+    headers.Authorization = `Bearer ${session.token}`;
+  }
+  return headers;
+}
+
 export async function signOut(): Promise<void> {
   await authFetch("/auth/logout", { method: "POST" });
 }

@@ -1,46 +1,65 @@
 import { Types } from "mongoose";
 
-// Main progress interface matching the API documentation structure
-export interface IProgress {
-  _id?: string;
-  studentId: Types.ObjectId;
-  courseId: Types.ObjectId;
-  completedLessons: Map<
-    string,
-    {
-      isCompleted: boolean;
-      completedAt: Date;
-      timeSpent: number;
-    }
-  >;
-  completionPercentage: number;
-  timeSpent: Map<string, number>; // weekKey -> total minutes
-  coinsEarned: number;
-  lessonCode: Map<
-    string,
-    {
-      language: string;
-      code: string;
-      timestamp: Date;
-    }
-  >;
-  currentLesson?: Types.ObjectId;
-  startedAt: Date;
-  lastCompletedAt?: Date;
-  isActive: boolean;
-  lastCalculatedAt: Date;
-  createdAt?: Date;
-  updatedAt?: Date;
+export interface ISlideCompletion {
+  isCompleted: boolean;
+  completedAt?: Date | string;
+  timeSpent: number;
+  lessonId: string;
 }
 
-// Progress creation DTO
+export interface ILessonCompletion {
+  isCompleted: boolean;
+  completedAt?: Date | string;
+  timeSpent: number;
+}
+
+// Main progress interface matching the API structure
+export interface IProgress {
+  _id?: string;
+  studentId: Types.ObjectId | string;
+  courseId: Types.ObjectId | string;
+  completedLessons:
+    | Record<string, ILessonCompletion>
+    | Map<string, ILessonCompletion>;
+  completedSlides?:
+    | Record<string, ISlideCompletion>
+    | Map<string, ISlideCompletion>;
+  completionPercentage: number;
+  timeSpent: Record<string, number> | Map<string, number>;
+  coinsEarned: number;
+  lessonCode:
+    | Record<
+        string,
+        {
+          language: string;
+          code: string;
+          timestamp: Date | string;
+        }
+      >
+    | Map<
+        string,
+        {
+          language: string;
+          code: string;
+          timestamp: Date | string;
+        }
+      >;
+  currentLesson?: Types.ObjectId | string;
+  currentSlide?: Types.ObjectId | string;
+  startedAt: Date | string;
+  lastCompletedAt?: Date | string;
+  isActive: boolean;
+  lastCalculatedAt: Date | string;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+}
+
 export interface ICreateProgressDto {
   studentId: string;
   courseId: string;
   currentLesson?: string;
 }
 
-// Progress update DTO
 export interface IUpdateProgressDto {
   completionPercentage?: number;
   coinsEarned?: number;
@@ -48,68 +67,68 @@ export interface IUpdateProgressDto {
   currentLesson?: string;
 }
 
-// Lesson completion DTO
 export interface ICompleteLessonDto {
   lessonId: string;
   timeSpent: number;
 }
 
-// Code saving DTO
+export interface ICompleteSlideDto {
+  slideId: string;
+  lessonId: string;
+  timeSpent?: number;
+}
+
 export interface ISaveCodeDto {
   lessonId: string;
   language: string;
   code: string;
 }
 
-// Time spent update DTO (see student/index.ts)
 export type { IUpdateTimeSpentDto } from "../student";
 
-// Completion percentage response
 export interface ICompletionPercentageResponse {
   percentage: number;
+  completedSlides: number;
+  totalSlides: number;
   completedLessons: number;
   totalLessons: number;
 }
 
-// Student progress summary (for getByStudentAndCourse)
+/** Full progress document returned by getByStudentAndCourse */
 export interface IStudentProgress {
   _id?: string;
   studentId: string;
   courseId: string;
   completionPercentage: number;
-  completedLessons: number;
-  totalLessons: number;
+  completedLessons:
+    | Record<string, ILessonCompletion>
+    | number;
+  completedSlides?: Record<string, ISlideCompletion>;
+  totalLessons?: number;
+  totalSlides?: number;
   coinsEarned: number;
-  timeSpent: number;
+  timeSpent: number | Record<string, number>;
+  lessonCode?: Record<
+    string,
+    {
+      language: string;
+      code: string;
+      timestamp: string;
+    }
+  >;
   currentLesson?: string;
-  startedAt: Date;
-  lastCompletedAt?: Date;
+  currentSlide?: string;
+  startedAt: Date | string;
+  lastCompletedAt?: Date | string;
   isActive: boolean;
-  // Legacy support for existing code structure
-  progress?: Array<{
-    _id?: string;
-    lessonId?: string;
-    slideId?: string;
-    code?: string;
-    timeSpent?: number;
-    completed?: boolean;
-    lastAccessed?: string;
-  }>;
 }
 
-// Progress response wrapper
 export interface IProgressResponse {
   _id: string;
   studentId: string;
   courseId: string;
-  completedLessons: Record<
-    string,
-    {
-      isCompleted: boolean;
-      completedAt: string;
-      timeSpent: number;
-    }
-  >;
+  completedLessons: Record<string, ILessonCompletion>;
+  completedSlides: Record<string, ISlideCompletion>;
   completionPercentage: number;
   timeSpent: Record<string, number>;
   coinsEarned: number;
@@ -122,6 +141,7 @@ export interface IProgressResponse {
     }
   >;
   currentLesson?: string;
+  currentSlide?: string;
   startedAt: string;
   lastCompletedAt?: string;
   isActive: boolean;

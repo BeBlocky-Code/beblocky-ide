@@ -1,4 +1,8 @@
-import { IProgress, IStudentProgress } from "@/types/progress";
+import {
+  ICompletionPercentageResponse,
+  IProgress,
+  IStudentProgress,
+} from "@/types/progress";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "https://api.beblocky.com";
@@ -60,6 +64,7 @@ function getMockResponse(endpoint: string, method?: string): any {
       studentId: "mock-student-id",
       courseId: "mock-course-id",
       completedLessons: {},
+      completedSlides: {},
       completionPercentage: 0,
       timeSpent: {},
       coinsEarned: 0,
@@ -68,6 +73,25 @@ function getMockResponse(endpoint: string, method?: string): any {
       startedAt: new Date().toISOString(),
       isActive: true,
       lastCalculatedAt: new Date().toISOString(),
+    };
+  }
+
+  if (endpoint.includes("/complete-slide") && method === "PATCH") {
+    return {
+      _id: "mock-progress-id",
+      studentId: "mock-student-id",
+      courseId: "mock-course-id",
+      completedLessons: {},
+      completedSlides: {
+        "mock-slide-id": {
+          isCompleted: true,
+          completedAt: new Date().toISOString(),
+          timeSpent: 0,
+          lessonId: "mock-lesson-id",
+        },
+      },
+      completionPercentage: 0,
+      coinsEarned: 0,
     };
   }
 
@@ -96,11 +120,6 @@ export const progressApi = {
     studentId: string;
     courseId: string;
     currentLesson?: string;
-    lessonId?: string;
-    slideId?: string;
-    code?: string;
-    timeSpent?: number;
-    completed?: boolean;
   }) =>
     apiCall<IProgress>("/progress", {
       method: "POST",
@@ -127,11 +146,9 @@ export const progressApi = {
 
   // Get completion percentage for student and course
   getCompletionPercentage: (studentId: string, courseId: string) =>
-    apiCall<{
-      percentage: number;
-      completedLessons: number;
-      totalLessons: number;
-    }>(`/progress/${studentId}/${courseId}/percentage`),
+    apiCall<ICompletionPercentageResponse>(
+      `/progress/${studentId}/${courseId}/percentage`
+    ),
 
   // Update progress record
   update: (id: string, data: Record<string, unknown>) =>
@@ -140,7 +157,7 @@ export const progressApi = {
       body: JSON.stringify(data),
     }),
 
-  // Complete a lesson and update progress
+  // Complete a lesson and update progress (compat — marks all slides)
   completeLesson: (
     id: string,
     data: {
@@ -149,6 +166,20 @@ export const progressApi = {
     }
   ) =>
     apiCall<IProgress>(`/progress/${id}/complete-lesson`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
+  // Complete a slide and derive lesson completion
+  completeSlide: (
+    id: string,
+    data: {
+      slideId: string;
+      lessonId: string;
+      timeSpent?: number;
+    }
+  ) =>
+    apiCall<IProgress>(`/progress/${id}/complete-slide`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),

@@ -19,7 +19,7 @@ import { progressApi } from "@/lib/api/progress";
 import { ILesson, ISlide } from "@/types";
 import { generateInitials, decryptCourseId } from "@/lib/utils";
 import { UserRole } from "@/types/user";
-import { IStudentProgress, IProgress } from "@/types/progress";
+import { IStudentProgress } from "@/types/progress";
 import IdeLoadingSkeleton from "@/components/ide/ide-loading";
 import { studentApi } from "@/lib/api/student";
 import { useSession } from "@/lib/auth-client";
@@ -307,44 +307,41 @@ export default function LearnPage() {
       const sortedInitialSlides = sortSlidesByOrder(initialSlides);
       let targetCode = sortedInitialSlides?.[0]?.startingCode || "";
 
-      if (progressData?.progress && progressData.progress.length > 0) {
-        const lastProgress =
-          progressData.progress[progressData.progress.length - 1];
-        if (lastProgress.lessonId) {
-          const lessonId = lastProgress.lessonId.toString();
-          const targetLessonFound = courseData.lessons?.find(
-            (l: any) => l._id?.toString() === lessonId,
-          );
-          if (targetLessonFound) {
-            const slides =
-              (targetLessonFound.slides as unknown as ISlide[]) || [];
-            const sortedSlides = sortSlidesByOrder(slides);
-            targetLesson = targetLessonFound;
-            setCurrentLessonId(lessonId);
-            setCurrentSlides(sortedSlides);
-            if (lastProgress.slideId) {
-              const slideIndex = sortedSlides.findIndex(
-                (s) => s._id?.toString() === lastProgress.slideId?.toString(),
-              );
-              if (slideIndex !== -1) {
-                targetSlideIndex = slideIndex;
-                targetCode =
-                  (lastProgress as any).code ||
-                  sortedSlides[slideIndex]?.startingCode ||
-                  "";
-              } else {
-                targetCode =
-                  (lastProgress as any).code ||
-                  sortedSlides[0]?.startingCode ||
-                  "";
-              }
-            } else {
-              targetCode =
-                (lastProgress as any).code ||
-                sortedSlides[0]?.startingCode ||
-                "";
-            }
+      const resumeLessonId = progressData?.currentLesson
+        ? String(progressData.currentLesson)
+        : null;
+      if (resumeLessonId) {
+        const targetLessonFound = courseData.lessons?.find(
+          (l: any) => l._id?.toString() === resumeLessonId,
+        );
+        if (targetLessonFound) {
+          const slides =
+            (targetLessonFound.slides as unknown as ISlide[]) || [];
+          const sortedSlides = sortSlidesByOrder(slides);
+          targetLesson = targetLessonFound;
+          setCurrentLessonId(resumeLessonId);
+          setCurrentSlides(sortedSlides);
+
+          const resumeSlideId = progressData?.currentSlide
+            ? String(progressData.currentSlide)
+            : null;
+          if (resumeSlideId) {
+            const slideIndex = sortedSlides.findIndex(
+              (s) => s._id?.toString() === resumeSlideId,
+            );
+            if (slideIndex !== -1) targetSlideIndex = slideIndex;
           }
+
+          const savedCode =
+            (progressData as any)?.lessonCode?.[resumeLessonId]?.code;
+          targetCode =
+            savedCode ||
+            sortedSlides[targetSlideIndex]?.startingCode ||
+            sortedSlides[0]?.startingCode ||
+            "";
+        } else {
+          setCurrentLessonId(targetLesson._id?.toString() || "");
+          setCurrentSlides(sortedInitialSlides);
         }
       } else {
         setCurrentLessonId(targetLesson._id?.toString() || "");
@@ -416,18 +413,83 @@ export default function LearnPage() {
       });
   };
 
-  const progressUpdateTimeSpentMutation = useMutation({
-    mutationFn: (args: {
-      id: string;
-      data: { slideId?: string; timeSpent?: number; lastAccessed?: string };
-    }) => progressApi.updateTimeSpent(args.id, args.data),
-    onSuccess: invalidateProgress,
-  });
   const progressCreateMutation = useMutation({
     mutationFn: (data: Parameters<typeof progressApi.create>[0]) =>
       progressApi.create(data),
-    onSuccess: invalidateProgress,
+    onSuccess: (created) => {
+      setUserProgress(created as unknown as IStudentProgress);
+      invalidateProgress();
+    },
   });
+
+  const progressCompleteSlideMutation = useMutation({
+    mutationFn: (args: {
+      id: string;
+      data: { slideId: string; lessonId: string; timeSpent?: number };
+    }) => progressApi.completeSlide(args.id, args.data),
+    onSuccess: (updated) => {
+      setUserProgress(updated as unknown as IStudentProgress);
+      invalidateProgress();
+    },
+  });
+
+  /** Ensure a Nest progress doc exists; returns its _id or null. */
+  const ensureProgressId = async (
+    lessonId?: string,
+  ): Promise<string | null> => {
+    if (!resolvedStudentId || resolvedStudentId === "guest") return null;
+
+    const existingId = userProgress?._id?.toString();
+    if (existingId) return existingId;
+
+    try {
+      const created = await progressCreateMutation.mutateAsync({
+        studentId: resolvedStudentId,
+        courseId: realCourseId,
+        currentLesson: lessonId || currentLessonId || undefined,
+      });
+      return created?._id?.toString() ?? null;
+    } catch {
+      // Race: another request may have created it
+      try {
+        const existing = await progressApi.getByStudentAndCourse(
+          resolvedStudentId,
+          realCourseId,
+        );
+        setUserProgress(existing as IStudentProgress);
+        return existing?._id?.toString() ?? null;
+      } catch {
+        return null;
+      }
+    }
+  };
+
+  // Bootstrap progress when student has none for this course
+  useEffect(() => {
+    if (
+      !resolvedStudentId ||
+      !realCourseId ||
+      !currentLessonId ||
+      userProgress?._id ||
+      progressCreateMutation.isPending
+    )
+      return;
+    if (!progressQuery.isError && progressQuery.data) return;
+    if (!progressQuery.isError) return;
+
+    progressCreateMutation.mutate({
+      studentId: resolvedStudentId,
+      courseId: realCourseId,
+      currentLesson: currentLessonId,
+    });
+  }, [
+    resolvedStudentId,
+    realCourseId,
+    currentLessonId,
+    userProgress?._id,
+    progressQuery.isError,
+    progressQuery.data,
+  ]);
 
   // Clear layout-change timeout on unmount
   useEffect(() => {
@@ -439,39 +501,38 @@ export default function LearnPage() {
     };
   }, []);
 
-  // Handle slide changes
+  // Handle slide changes — advancing/finishing marks the left (or current) slide complete
   const handleSlideChange = async (slideIndex: number) => {
+    const previousIndex = currentSlideIndex;
     setCurrentSlideIndex(slideIndex);
 
-    if (userData?.id !== "guest" && userData?.role === UserRole.STUDENT) {
-      const currentSlide = currentSlides[slideIndex];
-      if (!currentSlide) return;
-      const existingProgress = userProgress?.progress?.find(
-        (p: { lessonId?: { toString: () => string } }) =>
-          p.lessonId?.toString() === currentLessonId,
-      );
+    const isAdvancing = slideIndex > previousIndex;
+    const isFinishingLast =
+      slideIndex === previousIndex &&
+      slideIndex === currentSlides.length - 1 &&
+      currentSlides.length > 0;
 
-      if (existingProgress) {
-        progressUpdateTimeSpentMutation.mutate({
-          id: existingProgress._id?.toString() || "",
-          data: {
-            slideId: currentSlide._id?.toString(),
-            timeSpent: existingProgress.timeSpent || 0,
-            lastAccessed: new Date().toISOString(),
-          },
-        });
-      } else {
-        progressCreateMutation.mutate({
-          studentId: userData.id,
-          courseId: realCourseId,
-          lessonId: currentLessonId,
-          slideId: currentSlide._id?.toString(),
-          code: mainCode,
-          timeSpent: 0,
-          completed: false,
-        });
-      }
-    }
+    if (!isAdvancing && !isFinishingLast) return;
+    if (userData?.id === "guest" || userData?.role !== UserRole.STUDENT) return;
+    if (!currentLessonId) return;
+
+    const slideToComplete = isFinishingLast
+      ? currentSlides[slideIndex]
+      : currentSlides[previousIndex];
+    const slideId = slideToComplete?._id?.toString();
+    if (!slideId) return;
+
+    const progressId = await ensureProgressId(currentLessonId);
+    if (!progressId) return;
+
+    progressCompleteSlideMutation.mutate({
+      id: progressId,
+      data: {
+        slideId,
+        lessonId: currentLessonId,
+        timeSpent: Math.floor(timeSpent / 60) || 0,
+      },
+    });
   };
 
   // Handle lesson selection
@@ -492,30 +553,12 @@ export default function LearnPage() {
       setLastSavedCode(startingCode);
 
       if (userData?.id !== "guest" && userData?.role === UserRole.STUDENT) {
-        const existingProgress = userProgress?.progress?.find(
-          (p: { lessonId?: { toString: () => string } }) =>
-            p.lessonId?.toString() === lessonId,
-        );
-
-        if (existingProgress) {
-          progressUpdateTimeSpentMutation.mutate({
-            id: existingProgress._id?.toString() || "",
-            data: {
-              timeSpent: existingProgress.timeSpent || 0,
-              lastAccessed: new Date().toISOString(),
-            },
-          });
-        } else {
-          progressCreateMutation.mutate({
-            studentId: userData.id,
-            courseId: realCourseId,
-            lessonId: lessonId,
-            code:
-              (selectedLesson.slides as unknown as ISlide[])?.[0]
-                ?.startingCode || "",
-            timeSpent: 0,
-            completed: false,
-          });
+        const progressId = await ensureProgressId(lessonId);
+        if (progressId) {
+          progressApi
+            .update(progressId, { currentLesson: lessonId })
+            .then(() => invalidateProgress())
+            .catch(() => {});
         }
       }
     }
@@ -579,74 +622,47 @@ export default function LearnPage() {
     return "javascript";
   };
 
-  // Handle saving code with progress API integration
+  // Save Code persists code only — does not mark lessons/slides complete
   const handleSaveCode = async (): Promise<void> => {
     const saveKey = `code-${realCourseId}-${currentLessonId}`;
     localStorage.setItem(saveKey, mainCode);
 
     const studentId = resolvedStudentId ?? undefined;
-    const progress: IProgress | null =
-      userProgress as unknown as IProgress | null;
 
     try {
       if (!studentId) {
         throw new Error("Student ID not found");
       }
 
-      if (progress && progress._id) {
-        // Step 3: Detect programming language
-        const detectedLanguage = detectLanguage(mainCode);
-
-        // Step 3.5: Update progress completion status
-        try {
-          // Mark lesson as completed and update time spent
-          await progressApi.completeLesson(progress._id, {
-            lessonId: currentLessonId,
-            timeSpent: Math.floor(timeSpent / 60), // Convert seconds to minutes
-          });
-
-          // Update student total time spent
-          if (studentId && studentId !== "guest") {
-            await studentApi.updateTimeSpent(studentId, {
-              minutes: Math.floor(timeSpent / 60),
-            });
-          }
-        } catch (progressError) {
-          // Continue with saving code even if progress update fails
-        }
-
-        // Step 4: Save code to progress API
-        await progressApi.saveCode(progress._id, {
-          lessonId: currentLessonId,
-          language: detectedLanguage,
-          code: mainCode,
-        });
-
-        // Show success feedback
-        toast({
-          title: "Progress Saved",
-          description: `Your ${detectedLanguage} code has been saved to your progress.`,
-        });
-
-        // Update last saved code to track unsaved changes
-        setLastSavedCode(mainCode);
-        invalidateProgress();
-      } else {
+      const progressId = await ensureProgressId(currentLessonId);
+      if (!progressId || !currentLessonId) {
         throw new Error("Failed to get or create progress record");
       }
-    } catch (error) {
-      // Show error feedback but don't fail the entire save operation
-      toast({
-        title: "Progress Sync Failed",
-        description:
-          "Your code was saved locally, but couldn't sync with progress server. Please check your connection.",
-        variant: "destructive",
+
+      const detectedLanguage = detectLanguage(mainCode);
+
+      await progressApi.saveCode(progressId, {
+        lessonId: currentLessonId,
+        language: detectedLanguage,
+        code: mainCode,
       });
 
-      // Don't throw error - allow localStorage save to succeed
+      toast({
+        title: "Code Saved",
+        description: `Your ${detectedLanguage} code has been saved.`,
+      });
+
+      setLastSavedCode(mainCode);
+      invalidateProgress();
+    } catch (error) {
+      toast({
+        title: "Save Sync Failed",
+        description:
+          "Your code was saved locally, but couldn't sync with the server. Please check your connection.",
+        variant: "destructive",
+      });
     }
 
-    // Update last saved code even if API save failed (localStorage save succeeded)
     setLastSavedCode(mainCode);
   };
 
