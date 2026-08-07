@@ -11,8 +11,8 @@ RUN apk add --no-cache libc6-compat
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable
 
-# Copy package files
-COPY package.json pnpm-lock.yaml .npmrc ./
+# Copy package files (pnpm-workspace.yaml carries allowBuilds for sharp/unrs-resolver)
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
