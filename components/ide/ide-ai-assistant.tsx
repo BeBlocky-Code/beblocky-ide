@@ -103,8 +103,15 @@ export default function IdeAiAssistant({
   const analysisHistoryQuery = useQuery({
     queryKey: queryKeys.ai.analysisHistory(studentId),
     queryFn: () => codeAnalysisApi.getByStudent(studentId),
-    enabled: !!studentId && studentId !== "guest",
+    enabled: !!studentId && studentId !== "guest" && activeTab === "analysis",
     staleTime: 60 * 1000,
+  });
+
+  const courseProgressQuery = useQuery({
+    queryKey: queryKeys.progress.byStudentAndCourse(studentId, courseId),
+    queryFn: () => progressApi.getByStudentAndCourse(studentId, courseId),
+    enabled: !!studentId && studentId !== "guest" && !!courseId,
+    staleTime: 5 * 60 * 1000,
   });
 
   const conversations: Conversation[] = useMemo(() => {
@@ -240,7 +247,15 @@ export default function IdeAiAssistant({
       );
 
       setMessages(updatedConversation.messages);
-      invalidateConversations();
+      queryClient.setQueryData(
+        queryKeys.ai.conversations(studentId),
+        (prev: IAiConversation[] | undefined) => {
+          if (!prev) return [updatedConversation];
+          return prev.map((c) =>
+            c._id === updatedConversation._id ? updatedConversation : c
+          );
+        }
+      );
     } catch (error) {
       if (error instanceof ApiError && error.body) {
         console.error("Send message API error:", error.status, error.message, error.body);
@@ -274,62 +289,67 @@ export default function IdeAiAssistant({
     setIsThinking(true);
 
     try {
-      // Step a: Find code analysis related to the student
-      const existingAnalyses = await codeAnalysisApi.getByStudent(studentId);
+      // Prefer cached history; fetch once if the analysis tab never opened.
+      let existingAnalyses = analysisHistoryQuery.data;
+      if (!existingAnalyses) {
+        existingAnalyses = await queryClient.fetchQuery({
+          queryKey: queryKeys.ai.analysisHistory(studentId),
+          queryFn: () => codeAnalysisApi.getByStudent(studentId),
+          staleTime: 60 * 1000,
+        });
+      }
 
-      // Filter analyses by current lesson
-      const lessonAnalyses = existingAnalyses.filter(
+      const lessonAnalyses = (existingAnalyses ?? []).filter(
         (analysis) => String(analysis.lessonId) === String(lessonId)
       );
 
+      const progressDoc =
+        (courseProgressQuery.data as { _id?: string } | undefined) ||
+        (await queryClient.fetchQuery({
+          queryKey: queryKeys.progress.byStudentAndCourse(studentId, courseId),
+          queryFn: () =>
+            progressApi.getByStudentAndCourse(studentId, courseId),
+          staleTime: 5 * 60 * 1000,
+        }));
+      const progressId = progressDoc?._id ? String(progressDoc._id) : "";
+
       let analysis: ICodeAnalysis;
 
-      // Step b: If no code-analysis exists, create a new one
       if (lessonAnalyses.length === 0) {
-        const progressArr = await progressApi.getByStudent(studentId);
-        const progressId =
-          Array.isArray(progressArr) && progressArr.length > 0
-            ? (progressArr[0] as any)?._id || (progressArr[0] as any)?.id
-            : undefined;
-
         analysis = await codeAnalysisApi.analyze({
-          progressId: progressId,
+          progressId,
           lessonId: lessonId,
           codeContent: code,
           language: detectLanguage(code),
         });
       } else {
-        // Step c: If code-analysis exists, load the latest one and do new analysis
         const latestAnalysis = lessonAnalyses.sort(
           (a, b) =>
             new Date(b.analysisDate).getTime() -
             new Date(a.analysisDate).getTime()
         )[0];
 
-        // Load the existing analysis first
         setCurrentAnalysis(latestAnalysis);
         setCodeFeedback(latestAnalysis.feedback);
 
-        // Then perform a new analysis with the updated code
-        const progressArr = await progressApi.getByStudent(studentId);
-        const progressId =
-          Array.isArray(progressArr) && progressArr.length > 0
-            ? (progressArr[0] as any)?._id || (progressArr[0] as any)?.id
-            : undefined;
-
         analysis = await codeAnalysisApi.analyze({
-          progressId: progressId,
+          progressId,
           lessonId: lessonId,
           codeContent: code,
           language: detectLanguage(code),
         });
       }
 
-      // Update with the latest analysis result
       setCurrentAnalysis(analysis);
       setCodeFeedback(analysis.feedback);
 
-      invalidateAnalysisHistory();
+      queryClient.setQueryData(
+        queryKeys.ai.analysisHistory(studentId),
+        (prev: ICodeAnalysis[] | undefined) => {
+          const list = prev ?? existingAnalyses ?? [];
+          return [analysis, ...list.filter((a) => a._id !== analysis._id)];
+        }
+      );
     } catch (error) {
       console.error("Code analysis failed:", error);
 

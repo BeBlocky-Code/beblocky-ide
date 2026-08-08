@@ -9,60 +9,60 @@ export { codeAnalysisApi } from "./code-analysis";
 
 import { courseApi } from "./course";
 import { lessonApi } from "./lesson";
-import { slideApi } from "./slide";
 
-// Helper function to get course with full content (lessons and slides)
+function sortSlides(slides: any[]) {
+  return slides.slice().sort((a, b) => {
+    const orderA = Number.isFinite(Number(a?.order))
+      ? Number(a?.order)
+      : Number.MAX_SAFE_INTEGER;
+    const orderB = Number.isFinite(Number(b?.order))
+      ? Number(b?.order)
+      : Number.MAX_SAFE_INTEGER;
+    const orderDiff = orderA - orderB;
+    if (orderDiff !== 0) return orderDiff;
+
+    const timeA = new Date(a?.updatedAt || a?.createdAt || 0).getTime();
+    const timeB = new Date(b?.updatedAt || b?.createdAt || 0).getTime();
+    const timeDiff = timeA - timeB;
+    if (timeDiff !== 0) return timeDiff;
+
+    return String(a?._id || "").localeCompare(String(b?._id || ""));
+  });
+}
+
+// Prefer populated lessons (no N+1 slide fetches).
 export const getCourseWithContent = async (courseId: string) => {
   try {
     const course = await courseApi.getById(courseId);
-    const lessons = await lessonApi.getByCourseId(courseId);
+    const nestedLessons = (course as { lessons?: unknown }).lessons;
 
-    // Get slides for each lesson
-    const lessonsWithSlides = await Promise.all(
-      lessons.map(async (lesson) => {
-        const slides = await slideApi.getByLessonId(
-          lesson._id?.toString() || ""
-        );
-        return {
+    if (
+      Array.isArray(nestedLessons) &&
+      nestedLessons.length > 0 &&
+      typeof nestedLessons[0] === "object" &&
+      nestedLessons[0] !== null &&
+      "slides" in (nestedLessons[0] as object)
+    ) {
+      const sortedLessons = [...(nestedLessons as any[])]
+        .map((lesson) => ({
           ...lesson,
-          slides: slides
-            .slice()
-            .sort((a, b) => {
-              const orderA = Number.isFinite(Number((a as any)?.order))
-                ? Number((a as any)?.order)
-                : Number.MAX_SAFE_INTEGER;
-              const orderB = Number.isFinite(Number((b as any)?.order))
-                ? Number((b as any)?.order)
-                : Number.MAX_SAFE_INTEGER;
-              const orderDiff = orderA - orderB;
-              if (orderDiff !== 0) return orderDiff;
+          slides: Array.isArray(lesson.slides)
+            ? sortSlides(lesson.slides)
+            : [],
+        }))
+        .sort((a, b) => Number(a?.order || 0) - Number(b?.order || 0));
+      return { ...course, lessons: sortedLessons };
+    }
 
-              const timeA = new Date(
-                (a as any)?.updatedAt || (a as any)?.createdAt || 0
-              ).getTime();
-              const timeB = new Date(
-                (b as any)?.updatedAt || (b as any)?.createdAt || 0
-              ).getTime();
-              const timeDiff = timeA - timeB;
-              if (timeDiff !== 0) return timeDiff;
-
-              return String((a as any)?._id || "").localeCompare(
-                String((b as any)?._id || "")
-              );
-            }), // Sort slides by order (stable tie-breakers)
-        };
-      })
-    );
-
-    // Sort lessons by their order (assuming they have an order field)
-    const sortedLessons = lessonsWithSlides.sort((a, b) => {
-      // If lessons have an order field, use it; otherwise, keep original order
-      return (a as Record<string, unknown>).order &&
-        (b as Record<string, unknown>).order
-        ? ((a as Record<string, unknown>).order as number) -
-            ((b as Record<string, unknown>).order as number)
-        : 0;
-    });
+    const lessons = await lessonApi.getByCourseId(courseId);
+    const sortedLessons = [...lessons]
+      .map((lesson: any) => ({
+        ...lesson,
+        slides: Array.isArray(lesson.slides) ? sortSlides(lesson.slides) : [],
+      }))
+      .sort(
+        (a: any, b: any) => Number(a?.order || 0) - Number(b?.order || 0)
+      );
 
     return {
       ...course,

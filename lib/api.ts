@@ -110,31 +110,45 @@ export const studentApi = {
 // Helper function to get course with full content (lessons and slides)
 export const getCourseWithContent = async (courseId: string) => {
   try {
+    // Prefer a single course GET when the API nests lessons+slides.
     const course = await courseApi.getById(courseId);
+    const nestedLessons = (course as { lessons?: unknown }).lessons;
+
+    if (
+      Array.isArray(nestedLessons) &&
+      nestedLessons.length > 0 &&
+      typeof nestedLessons[0] === "object" &&
+      nestedLessons[0] !== null &&
+      "slides" in (nestedLessons[0] as object)
+    ) {
+      const sortedLessons = [...(nestedLessons as any[])].map((lesson) => ({
+        ...lesson,
+        slides: Array.isArray(lesson.slides)
+          ? [...lesson.slides].sort(
+              (a: any, b: any) => (Number(a.order) || 0) - (Number(b.order) || 0)
+            )
+          : [],
+      }));
+      sortedLessons.sort(
+        (a: any, b: any) => Number(a?.order || 0) - Number(b?.order || 0)
+      );
+      return { ...course, lessons: sortedLessons };
+    }
+
+    // Fallback: one lessons-by-course call (backend populates slides).
     const lessons = await lessonApi.getByCourseId(courseId);
-
-    // Get slides for each lesson
-    const lessonsWithSlides = await Promise.all(
-      lessons.map(async (lesson) => {
-        const slides = await slideApi.getByLessonId(
-          lesson._id?.toString() || ""
-        );
-        return {
-          ...lesson,
-          slides: slides.sort((a, b) => a.order - b.order), // Sort slides by order
-        };
-      })
-    );
-
-    // Sort lessons by their order (assuming they have an order field)
-    const sortedLessons = lessonsWithSlides.sort((a, b) => {
-      // If lessons have an order field, use it; otherwise, keep original order
-      return (a as Record<string, unknown>).order &&
-        (b as Record<string, unknown>).order
-        ? ((a as Record<string, unknown>).order as number) -
-            ((b as Record<string, unknown>).order as number)
-        : 0;
-    });
+    const sortedLessons = [...lessons]
+      .map((lesson: any) => ({
+        ...lesson,
+        slides: Array.isArray(lesson.slides)
+          ? [...lesson.slides].sort(
+              (a: any, b: any) => (Number(a.order) || 0) - (Number(b.order) || 0)
+            )
+          : [],
+      }))
+      .sort(
+        (a: any, b: any) => Number(a?.order || 0) - Number(b?.order || 0)
+      );
 
     return {
       ...course,
