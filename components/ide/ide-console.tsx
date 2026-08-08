@@ -20,8 +20,10 @@ import {
   Info,
   ChevronDown,
   Play,
+  RotateCcw,
+  Square,
 } from "lucide-react";
-import { BEBLOCKY_REPL_SETUP, PS1, PS2 } from "@/lib/python-repl";
+import { PS1, PS2, PythonRuntime } from "@/lib/python-runtime";
 
 type LogLevel = "info" | "error" | "warning" | "success";
 
@@ -42,13 +44,6 @@ export type IdeConsoleHandle = {
   run: () => void;
 };
 
-declare global {
-  interface Window {
-    loadPyodide?: (options?: Record<string, unknown>) => Promise<any>;
-    beblockyReadStdin?: () => Promise<string>;
-  }
-}
-
 function makeId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -64,20 +59,12 @@ const IdeConsole = forwardRef<
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [activeTab, setActiveTab] = useState("console");
   const consoleRef = useRef<HTMLDivElement>(null);
-  const pyodideRef = useRef<any>(null);
-  const pyodideLoadingRef = useRef<Promise<any> | null>(null);
-  const pyodideScriptLoadingRef = useRef<Promise<void> | null>(null);
   const runCodeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const runCodeIframeRef = useRef<HTMLIFrameElement | null>(null);
   const runCodeMessageHandlerRef = useRef<((e: MessageEvent) => void) | null>(
     null
   );
   const runCodeIdRef = useRef<string | null>(null);
-  const pyodideScriptListenersRef = useRef<{
-    script: HTMLScriptElement;
-    onLoad: () => void;
-    onError: () => void;
-  } | null>(null);
 
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [lineInput, setLineInput] = useState("");
@@ -87,15 +74,12 @@ const IdeConsole = forwardRef<
   const [awaitingStdin, setAwaitingStdin] = useState(false);
   const [pythonError, setPythonError] = useState<string | null>(null);
 
-  const replGlobalsRef = useRef<any>(null);
+  const runtimeRef = useRef<PythonRuntime | null>(null);
   const busyRef = useRef(false);
-  const stdinResolverRef = useRef<((value: string) => void) | null>(null);
-  const stdinRejectRef = useRef<((reason?: unknown) => void) | null>(null);
   const historyRef = useRef<string[]>([]);
   const historyIndexRef = useRef<number | null>(null);
   const lineInputRef = useRef<HTMLInputElement>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
-  const localBufferRef = useRef<string[]>([]);
   const codeRef = useRef(code);
   codeRef.current = code;
 
@@ -144,331 +128,153 @@ const IdeConsole = forwardRef<
   const appendTranscriptRef = useRef(appendTranscript);
   appendTranscriptRef.current = appendTranscript;
 
-  const rejectPendingStdin = useCallback((reason?: unknown) => {
-    if (stdinRejectRef.current) {
-      const reject = stdinRejectRef.current;
-      stdinResolverRef.current = null;
-      stdinRejectRef.current = null;
-      setAwaitingStdin(false);
-      reject(reason ?? new Error("KeyboardInterrupt"));
-    }
-  }, []);
-
-  const requestStdinLine = useCallback((): Promise<string> => {
-    setAwaitingStdin(true);
-    queueMicrotask(() => lineInputRef.current?.focus());
-    return new Promise<string>((resolve, reject) => {
-      stdinResolverRef.current = (value: string) => {
-        stdinResolverRef.current = null;
-        stdinRejectRef.current = null;
-        setAwaitingStdin(false);
-        resolve(value);
-      };
-      stdinRejectRef.current = (reason?: unknown) => {
-        stdinResolverRef.current = null;
-        stdinRejectRef.current = null;
-        setAwaitingStdin(false);
-        reject(reason);
-      };
-    });
-  }, []);
-
-  const ensurePyodideScript = useCallback(async () => {
-    if (typeof window === "undefined") return;
-    if (typeof window.loadPyodide === "function") return;
-
-    if (!pyodideScriptLoadingRef.current) {
-      pyodideScriptLoadingRef.current = new Promise<void>((resolve, reject) => {
-        const existing = document.querySelector<HTMLScriptElement>(
-          'script[data-pyodide="true"]'
-        );
-        if (existing) {
-          const onLoad = () => resolve();
-          const onError = () =>
-            reject(new Error("Failed to load Pyodide script."));
-          existing.addEventListener("load", onLoad);
-          existing.addEventListener("error", onError);
-          pyodideScriptListenersRef.current = {
-            script: existing,
-            onLoad,
-            onError,
-          };
-          return;
-        }
-
-        const script = document.createElement("script");
-        script.dataset.pyodide = "true";
-        script.src = "https://cdn.jsdelivr.net/pyodide/v0.29.1/full/pyodide.js";
-        script.async = true;
-        script.onload = () => resolve();
-        script.onerror = () =>
-          reject(new Error("Failed to load Pyodide script."));
-        document.head.appendChild(script);
-      });
-    }
-
-    await pyodideScriptLoadingRef.current;
-  }, []);
-
-  const ensurePythonRuntime = useCallback(async () => {
-    if (pyodideRef.current && replGlobalsRef.current) {
-      return {
-        py: pyodideRef.current,
-        globals: replGlobalsRef.current,
-      };
-    }
-
-    if (!pyodideLoadingRef.current) {
-      pyodideLoadingRef.current = (async () => {
-        await ensurePyodideScript();
-        const loadPyodide = window.loadPyodide;
-        if (typeof loadPyodide !== "function") {
-          throw new Error(
-            "Pyodide failed to load (window.loadPyodide missing)."
-          );
-        }
-
-        window.beblockyReadStdin = () => requestStdinLine();
-
-        const py = await loadPyodide({
-          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.29.1/full/",
-        });
-
-        // Disable browser prompt(); all stdin goes through beblockyReadStdin.
-        if (typeof py.setStdin === "function") {
-          py.setStdin({
-            stdin: () => {
-              throw new Error(
-                "Synchronous stdin is disabled. Use input() via the Beblocky console."
-              );
-            },
-          });
-        }
-
-        if (typeof py.setStdout === "function") {
-          py.setStdout({
-            batched: (s: string) => s && appendTranscriptRef.current(s, "out"),
-          });
-        }
-        if (typeof py.setStderr === "function") {
-          py.setStderr({
-            batched: (s: string) => s && appendTranscriptRef.current(s, "err"),
-          });
-        }
-
-        // Shared REPL namespace (same as PyodideConsole(py.globals))
-        const globals = py.globals;
-        replGlobalsRef.current = globals;
-
-        py.runPython(BEBLOCKY_REPL_SETUP, { globals });
-
-        let banner = `Welcome to the Beblocky Python REPL (Pyodide ${py.version})`;
-        try {
-          const consoleMod = py.pyimport("pyodide.console");
-          if (consoleMod?.BANNER) {
-            banner += `\n${consoleMod.BANNER}`;
-          }
-        } catch {
-          /* optional */
-        }
-        appendTranscriptRef.current(banner, "sys");
-
-        pyodideRef.current = py;
-        return { py, globals };
-      })();
-    }
-
-    return pyodideLoadingRef.current;
-  }, [ensurePyodideScript, requestStdinLine]);
-
   const setBusy = useCallback((busy: boolean) => {
     busyRef.current = busy;
     setIsBusy(busy);
   }, []);
 
-  const executeSource = useCallback(
-    async (source: string, filename = "<stdin>") => {
-      const { py, globals } = await ensurePythonRuntime();
-      try {
-        const result = await py.runPythonAsync(
-          `__beblocky_exec(${JSON.stringify(source)}, ${JSON.stringify(filename)})`,
-          { globals }
-        );
-        if (result !== undefined && result !== null) {
-          let text: string;
-          try {
-            const shortened = py.runPython(
-              `from pyodide.console import repr_shorten\nrepr_shorten`,
-              { globals }
-            );
-            text = String(
-              shortened.callKwargs
-                ? shortened.callKwargs(result, {
-                    separator: "\n<long output truncated>\n",
-                  })
-                : shortened(result)
-            );
-            try {
-              shortened.destroy?.();
-            } catch {
-              /* ignore */
-            }
-          } catch {
-            text = String(result);
-          }
-          if (text && text !== "None") {
-            appendTranscriptRef.current(
-              text.endsWith("\n") ? text : `${text}\n`,
-              "out"
-            );
-          }
-          try {
-            result.destroy?.();
-          } catch {
-            /* ignore */
-          }
-        }
-      } catch (error: any) {
-        const msg = error?.message ? String(error.message) : String(error);
+  // One worker-backed runtime per mounted Python console.
+  useEffect(() => {
+    if (!isPythonCourse) return;
+
+    const runtime = new PythonRuntime({
+      onStdout: (text) => appendTranscriptRef.current(text, "out"),
+      onStderr: (text) => appendTranscriptRef.current(text, "err"),
+      onStdinChange: setAwaitingStdin,
+      onReady: (version) => {
+        setPythonError(null);
+        setReplReady(true);
+        setPrompt(PS1);
         appendTranscriptRef.current(
-          msg
-            .replace(/\n\s*File ".*__beblocky_exec.*/g, "")
-            .replace(/\n\s*File ".*__beblocky_run.*/g, "")
-            .trimEnd() || msg.trimEnd(),
+          version
+            ? `Python ${version} ready. Type below or press Run.`
+            : "Python ready. Type below or press Run.",
+          "sys"
+        );
+      },
+      onLoadError: (message) => {
+        setReplReady(false);
+        setAwaitingStdin(false);
+        setBusy(false);
+        setPythonError(message);
+        appendTranscriptRef.current(message, "err");
+      },
+      onRestart: () => {
+        setBusy(false);
+        setReplReady(false);
+        setPrompt(PS1);
+        appendTranscriptRef.current(
+          "^C\nKeyboardInterrupt — Python restarted, variables were cleared.",
           "err"
         );
-      }
-    },
-    [ensurePythonRuntime]
-  );
+      },
+    });
 
-  const checkSyntax = useCallback(
-    async (source: string): Promise<"incomplete" | "complete" | "syntax-error"> => {
-      const { py, globals } = await ensurePythonRuntime();
-      const result = py.runPython(
-        `__beblocky_check_syntax(${JSON.stringify(source)})`,
-        { globals }
-      );
-      try {
-        const arr = result.toJs ? result.toJs() : result;
-        const status = arr[0] as string;
-        if (status === "syntax-error") {
-          const errText = arr[1] != null ? String(arr[1]) : "SyntaxError";
-          appendTranscriptRef.current(errText.trimEnd(), "err");
-          return "syntax-error";
-        }
-        if (status === "incomplete") return "incomplete";
-        return "complete";
-      } finally {
-        try {
-          result.destroy?.();
-        } catch {
-          /* ignore */
-        }
-      }
-    },
-    [ensurePythonRuntime]
-  );
+    runtimeRef.current = runtime;
+    setTranscript([]);
+    setReplReady(false);
+    setPythonError(null);
+    appendTranscriptRef.current("Loading Python…", "sys");
+    runtime.start();
+
+    return () => {
+      runtimeRef.current = null;
+      runtime.dispose();
+    };
+  }, [isPythonCourse, setBusy]);
+
+  // Focus after React enables the field for stdin (a microtask focus would race
+  // the disabled attribute).
+  useEffect(() => {
+    if (!awaitingStdin) return;
+    lineInputRef.current?.focus();
+  }, [awaitingStdin]);
+
+  const retryRuntime = useCallback(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime) return;
+    setBusy(false);
+    setPythonError(null);
+    setReplReady(false);
+    setPrompt(PS1);
+    appendTranscriptRef.current("Reloading Python…", "sys");
+    runtime.retry();
+  }, [setBusy]);
 
   const pushReplLine = useCallback(
     async (rawLine: string) => {
-      if (busyRef.current || awaitingStdin) return;
+      const runtime = runtimeRef.current;
+      if (!runtime || busyRef.current) return;
       const line = rawLine.replace(/\u00a0/g, " ");
 
       if (line.trim() === "clear") {
+        runtime.reset();
         setTranscript([]);
         setPrompt(PS1);
-        localBufferRef.current = [];
         appendTranscriptRef.current("Console cleared.", "sys");
         return;
       }
 
       appendTranscriptRef.current(`${prompt}${line}`, "in");
       setBusy(true);
-
       try {
-        localBufferRef.current.push(line);
-        const source = localBufferRef.current.join("\n");
-        const status = await checkSyntax(source);
-
-        if (status === "incomplete") {
-          setPrompt(PS2);
-          return;
-        }
-
-        localBufferRef.current = [];
-        setPrompt(PS1);
-
-        if (status === "syntax-error") {
-          return;
-        }
-
-        await executeSource(source);
-      } catch (error: any) {
-        localBufferRef.current = [];
-        setPrompt(PS1);
-        appendTranscriptRef.current(
-          error?.message ? String(error.message) : String(error),
-          "err"
-        );
+        const status = await runtime.push(line);
+        setPrompt(status === "incomplete" ? PS2 : PS1);
       } finally {
         setBusy(false);
         queueMicrotask(() => lineInputRef.current?.focus());
       }
     },
-    [awaitingStdin, checkSyntax, executeSource, prompt, setBusy]
+    [prompt, setBusy]
   );
 
   const runPythonFile = useCallback(async () => {
-    if (busyRef.current) return;
-    const pythonCode = codeRef.current;
+    const runtime = runtimeRef.current;
+    if (!runtime || busyRef.current) return;
 
+    const pythonCode = codeRef.current;
     if (!pythonCode?.trim()) {
       appendTranscriptRef.current("No Python code to run.", "sys");
       return;
     }
 
-    rejectPendingStdin(new Error("KeyboardInterrupt"));
-    localBufferRef.current = [];
     setPrompt(PS1);
     setBusy(true);
     appendTranscriptRef.current("— Running main.py —", "sys");
-
     try {
-      await ensurePythonRuntime();
-      await executeSource(pythonCode, "main.py");
-    } catch (error: any) {
-      appendTranscriptRef.current(
-        error?.message ? String(error.message) : String(error),
-        "err"
-      );
+      await runtime.runFile(pythonCode, "main.py");
     } finally {
       setBusy(false);
       setPrompt(PS1);
       queueMicrotask(() => lineInputRef.current?.focus());
     }
-  }, [ensurePythonRuntime, executeSource, rejectPendingStdin, setBusy]);
+  }, [setBusy]);
 
   const handleInterrupt = useCallback(() => {
-    const wasAwaitingStdin = Boolean(stdinRejectRef.current);
-    localBufferRef.current = [];
-    rejectPendingStdin(new Error("KeyboardInterrupt"));
-    setPrompt(PS1);
-    appendTranscriptRef.current(
-      wasAwaitingStdin ? "^C" : "^C\nKeyboardInterrupt",
-      "err"
-    );
+    const runtime = runtimeRef.current;
+    if (!runtime) return;
+
     setLineInput("");
     historyIndexRef.current = null;
-  }, [rejectPendingStdin]);
+    setPrompt(PS1);
+
+    // A restart reports itself through onRestart; cancelling input() does not.
+    const restarted = runtime.interrupt();
+    if (!restarted) {
+      appendTranscriptRef.current("^C", "err");
+    }
+  }, []);
 
   const submitLine = useCallback(
     async (value: string) => {
-      if (awaitingStdin && stdinResolverRef.current) {
+      const runtime = runtimeRef.current;
+      if (!runtime) return;
+
+      if (awaitingStdin) {
         appendTranscriptRef.current(value, "in");
-        stdinResolverRef.current(value);
         setLineInput("");
         historyIndexRef.current = null;
+        runtime.respondStdin(value);
         return;
       }
 
@@ -535,39 +341,13 @@ const IdeConsole = forwardRef<
   );
 
   const clearPythonConsole = useCallback(() => {
+    runtimeRef.current?.reset();
     setTranscript([]);
     setPrompt(PS1);
-    localBufferRef.current = [];
     if (replReady) {
       appendTranscriptRef.current("Console cleared.", "sys");
     }
   }, [replReady]);
-
-  useEffect(() => {
-    if (!isPythonCourse) return;
-    let cancelled = false;
-    setPythonError(null);
-    (async () => {
-      try {
-        appendTranscriptRef.current("Loading Python runtime…", "sys");
-        await ensurePythonRuntime();
-        if (!cancelled) {
-          setReplReady(true);
-          setPrompt(PS1);
-          queueMicrotask(() => lineInputRef.current?.focus());
-        }
-      } catch (error: any) {
-        if (!cancelled) {
-          const msg = error?.message ? String(error.message) : String(error);
-          setPythonError(msg);
-          appendTranscriptRef.current(msg, "err");
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isPythonCourse, ensurePythonRuntime]);
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ block: "end" });
@@ -589,19 +369,8 @@ const IdeConsole = forwardRef<
         document.body.removeChild(iframe);
         runCodeIframeRef.current = null;
       }
-      const pyodide = pyodideScriptListenersRef.current;
-      if (pyodide) {
-        pyodide.script.removeEventListener("load", pyodide.onLoad);
-        pyodide.script.removeEventListener("error", pyodide.onError);
-        pyodideScriptListenersRef.current = null;
-      }
-      rejectPendingStdin(new Error("Console unmounted"));
-      if (window.beblockyReadStdin) {
-        delete window.beblockyReadStdin;
-      }
-      replGlobalsRef.current = null;
     };
-  }, [rejectPendingStdin]);
+  }, []);
 
   const runWebCode = useCallback(() => {
     clearLogs();
@@ -628,7 +397,9 @@ const IdeConsole = forwardRef<
 
       const runId = runCodeIdRef.current;
       const handleMessage = (event: MessageEvent) => {
-        const data = (event as any)?.data;
+        const data = event?.data as
+          | { source?: string; runId?: string; level?: string; args?: unknown[] }
+          | undefined;
         if (!data || data.source !== "beblocky-ide-console") return;
         if (!runId || data.runId !== runId) return;
 
@@ -741,6 +512,8 @@ ${safeCode}
     }
   };
 
+  // Disabled while busy unless we're waiting on input() (then the field must
+  // accept keys).
   const inputDisabled = isPythonCourse
     ? Boolean(pythonError) ||
       (!replReady && !awaitingStdin) ||
@@ -771,6 +544,30 @@ ${safeCode}
               >
                 <Trash2 size={16} />
               </Button>
+
+              {isPythonCourse && pythonError && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={retryRuntime}
+                  className="h-8 w-8"
+                  title="Reload Python runtime"
+                >
+                  <RotateCcw size={16} />
+                </Button>
+              )}
+
+              {isPythonCourse && (isBusy || awaitingStdin) && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleInterrupt}
+                  className="h-8 w-8 text-red-500"
+                  title="Stop (Ctrl+C)"
+                >
+                  <Square size={16} />
+                </Button>
+              )}
 
               <Button
                 variant="ghost"
@@ -829,33 +626,46 @@ ${safeCode}
                     <div ref={transcriptEndRef} />
                   </div>
                 </ScrollArea>
-                <div className="border-t px-3 py-2 flex items-center gap-1 font-mono text-sm bg-muted/20">
-                  {!awaitingStdin && (
-                    <span className="text-muted-foreground select-none shrink-0">
-                      {prompt}
+
+                {pythonError ? (
+                  <div className="border-t px-3 py-2 flex items-center justify-between gap-3 bg-muted/20">
+                    <span className="text-xs text-muted-foreground truncate">
+                      Python could not start.
                     </span>
-                  )}
-                  <input
-                    ref={lineInputRef}
-                    type="text"
-                    value={lineInput}
-                    disabled={inputDisabled}
-                    onChange={(e) => setLineInput(e.target.value)}
-                    onKeyDown={onLineKeyDown}
-                    spellCheck={false}
-                    autoCapitalize="off"
-                    autoCorrect="off"
-                    className="flex-1 min-w-0 bg-transparent outline-none border-none text-sm font-mono"
-                    placeholder={
-                      !replReady
-                        ? "Loading…"
-                        : awaitingStdin
-                          ? ""
-                          : "Type Python here…"
-                    }
-                    aria-label="Python REPL input"
-                  />
-                </div>
+                    <Button size="sm" variant="secondary" onClick={retryRuntime}>
+                      <RotateCcw size={14} className="mr-1.5" />
+                      Retry
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="border-t px-3 py-2 flex items-center gap-1 font-mono text-sm bg-muted/20">
+                    {!awaitingStdin && (
+                      <span className="text-muted-foreground select-none shrink-0">
+                        {prompt}
+                      </span>
+                    )}
+                    <input
+                      ref={lineInputRef}
+                      type="text"
+                      value={lineInput}
+                      disabled={inputDisabled}
+                      onChange={(e) => setLineInput(e.target.value)}
+                      onKeyDown={onLineKeyDown}
+                      spellCheck={false}
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                      className="flex-1 min-w-0 bg-transparent outline-none border-none text-sm font-mono"
+                      placeholder={
+                        !replReady
+                          ? "Loading Python…"
+                          : awaitingStdin
+                            ? ""
+                            : "Type Python here…"
+                      }
+                      aria-label="Python REPL input"
+                    />
+                  </div>
+                )}
               </div>
             ) : (
               <ScrollArea className="h-full">

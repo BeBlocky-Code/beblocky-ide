@@ -7,10 +7,11 @@
     "node": ">=22.13"
   },
   "scripts": {
-    "build": "next build",
-    "dev": "next dev",
+    "build": "pnpm run sync:pyodide && next build",
+    "dev": "pnpm run sync:pyodide && next dev",
     "lint": "eslint .",
-    "start": "next start"
+    "start": "next start",
+    "sync:pyodide": "node scripts/sync-pyodide.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

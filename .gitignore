@@ -25,5 +25,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# pyodide runtime copied from node_modules by scripts/sync-pyodide.mjs
+/public/pyodide/
 .vercel
 .env*.local
