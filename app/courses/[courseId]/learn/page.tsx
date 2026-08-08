@@ -200,11 +200,11 @@ export default function LearnPage() {
 
   const invalidCourseId = !!encryptedCourseId && !realCourseId;
   const noSession = !isSessionPending && !session?.user;
+  // Do not block the IDE on progress — paint course/student first, hydrate completion later.
   const isLoadingInitial =
     isSessionPending ||
     (courseQuery.isLoading && !!realCourseId) ||
-    (!!session?.user?.id && studentQuery.isLoading) ||
-    (!!resolvedStudentId && progressQuery.isLoading);
+    (!!session?.user?.id && studentQuery.isLoading);
   const hasError =
     invalidCourseId ||
     noSession ||
@@ -413,12 +413,21 @@ export default function LearnPage() {
       });
   };
 
+  const seedProgressCache = (updated: IStudentProgress) => {
+    if (!resolvedStudentId || !realCourseId) return;
+    queryClient.setQueryData(
+      queryKeys.progress.byStudentAndCourse(resolvedStudentId, realCourseId),
+      updated,
+    );
+  };
+
   const progressCreateMutation = useMutation({
     mutationFn: (data: Parameters<typeof progressApi.create>[0]) =>
       progressApi.create(data),
     onSuccess: (created) => {
-      setUserProgress(created as unknown as IStudentProgress);
-      invalidateProgress();
+      const progress = created as unknown as IStudentProgress;
+      setUserProgress(progress);
+      seedProgressCache(progress);
     },
   });
 
@@ -428,8 +437,9 @@ export default function LearnPage() {
       data: { slideId: string; lessonId: string; timeSpent?: number };
     }) => progressApi.completeSlide(args.id, args.data),
     onSuccess: (updated) => {
-      setUserProgress(updated as unknown as IStudentProgress);
-      invalidateProgress();
+      const progress = updated as unknown as IStudentProgress;
+      setUserProgress(progress);
+      seedProgressCache(progress);
     },
   });
 
