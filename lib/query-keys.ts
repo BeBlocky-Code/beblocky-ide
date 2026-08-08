@@ -29,6 +29,8 @@ export const queryKeys = {
   ai: {
     conversations: (studentId: string) =>
       ["ai", "conversations", studentId] as const,
+    conversation: (conversationId: string) =>
+      ["ai", "conversation", conversationId] as const,
     analysisHistory: (studentId: string) =>
       ["ai", "analysisHistory", studentId] as const,
   },

@@ -30,6 +30,25 @@ type Conversation = {
   messages?: IChatMessage[];
 };
 
+function normalizeId(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string" || typeof value === "number") {
+    return String(value);
+  }
+  if (typeof value === "object" && value !== null && "_id" in value) {
+    return normalizeId((value as { _id: unknown })._id);
+  }
+  return String(value);
+}
+
+function courseIdOf(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "object" && value !== null && "_id" in value) {
+    return normalizeId((value as { _id: unknown })._id);
+  }
+  return normalizeId(value);
+}
+
 export default function IdeAiAssistant({
   code,
   courseId,
@@ -116,25 +135,25 @@ export default function IdeAiAssistant({
 
   const conversations: Conversation[] = useMemo(() => {
     const list = conversationsQuery.data ?? [];
-    return list
-      .filter(
-        (conv): conv is IAiConversation & { _id: string } =>
-          !!conv &&
-          !!conv._id &&
-          typeof conv._id === "string" &&
-          conv._id.length > 0
-      )
-      .map((conv) => ({
-        _id: conv._id!,
+    const mapped: Conversation[] = [];
+    for (const conv of list) {
+      const id = normalizeId(conv?._id);
+      if (!id) continue;
+      mapped.push({
+        _id: id,
         title:
           conv.title ||
           (conv.messages && conv.messages.length > 0
             ? "New Conversation"
             : "Untitled Conversation"),
-        lastActivity: new Date(conv.lastActivity).toISOString(),
-        courseId: conv.courseId.toString(),
-        messages: conv.messages,
-      }));
+        lastActivity: new Date(
+          conv.lastActivity || Date.now(),
+        ).toISOString(),
+        courseId: courseIdOf(conv.courseId),
+        messages: Array.isArray(conv.messages) ? conv.messages : undefined,
+      });
+    }
+    return mapped;
   }, [conversationsQuery.data]);
 
   const analysisHistory = analysisHistoryQuery.data ?? [];
@@ -149,18 +168,56 @@ export default function IdeAiAssistant({
     };
   }, []);
 
-  // Sync messages when selecting a conversation from the cached list
+  const upsertConversationInCache = (conversation: IAiConversation) => {
+    const id = normalizeId(conversation._id);
+    queryClient.setQueryData(
+      queryKeys.ai.conversations(studentId),
+      (prev: IAiConversation[] | undefined) => {
+        if (!prev) return [conversation];
+        const exists = prev.some((c) => normalizeId(c._id) === id);
+        if (!exists) return [conversation, ...prev];
+        return prev.map((c) =>
+          normalizeId(c._id) === id ? conversation : c,
+        );
+      },
+    );
+    queryClient.setQueryData(queryKeys.ai.conversation(id), conversation);
+  };
+
+  const loadConversationMessages = async (conversationId: string) => {
+    const cached = conversations.find((c) => c._id === conversationId);
+    if (cached?.messages && cached.messages.length > 0) {
+      setMessages(cached.messages);
+    }
+
+    try {
+      const full = await queryClient.fetchQuery({
+        queryKey: queryKeys.ai.conversation(conversationId),
+        queryFn: () => aiConversationApi.getById(conversationId),
+        staleTime: 30 * 1000,
+      });
+      if (!isMountedRef.current) return;
+      if (Array.isArray(full?.messages)) {
+        setMessages(full.messages);
+        upsertConversationInCache(full);
+      }
+    } catch (error) {
+      console.error("Failed to load conversation:", error);
+      if (!cached?.messages?.length && isMountedRef.current) {
+        setMessages([]);
+      }
+    }
+  };
+
+  // Keep selected chat messages in sync when the list cache updates
   useEffect(() => {
-    if (conversations.length === 0) {
-      setSelectedConversationId("");
-      setMessages([]);
-      return;
+    if (!selectedConversationId) return;
+    if (conversationsQuery.isLoading) return;
+    const conv = conversations.find((c) => c._id === selectedConversationId);
+    if (conv?.messages && conv.messages.length > 0) {
+      setMessages(conv.messages);
     }
-    if (selectedConversationId) {
-      const conv = conversations.find((c) => c._id === selectedConversationId);
-      if (conv?.messages) setMessages(conv.messages);
-    }
-  }, [conversations, selectedConversationId]);
+  }, [conversations, selectedConversationId, conversationsQuery.isLoading]);
 
   const invalidateConversations = () =>
     queryClient.invalidateQueries({
@@ -171,8 +228,6 @@ export default function IdeAiAssistant({
       queryKey: queryKeys.ai.analysisHistory(studentId),
     });
 
-  // Create new conversation
-  // Handle new chat button - only clear messages, don't create conversation
   const handleNewChat = () => {
     setSelectedConversationId("");
     setMessages([]);
@@ -180,25 +235,20 @@ export default function IdeAiAssistant({
   };
 
   const createConversationMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (initialMessage: string) =>
       aiConversationApi.create({
         courseId,
         studentId,
         title: "",
         lessonId: lessonId,
-        initialMessage: inputValue,
+        initialMessage,
       }),
     onSuccess: (newConversation) => {
+      upsertConversationInCache(newConversation);
       invalidateConversations();
-      const conversation = {
-        _id: newConversation._id || `temp-${Date.now()}`,
-        title: "New Conversation",
-        lastActivity: new Date(newConversation.lastActivity).toISOString(),
-        courseId: newConversation.courseId.toString(),
-        messages: newConversation.messages || [],
-      };
-      setSelectedConversationId(conversation._id);
-      setMessages(conversation.messages);
+      const id = normalizeId(newConversation._id);
+      setSelectedConversationId(id);
+      setMessages(newConversation.messages || []);
       setIsConversationSidebarOpen(false);
     },
     onSettled: () => {
@@ -206,26 +256,46 @@ export default function IdeAiAssistant({
     },
   });
 
-  const createNewConversation = async () => {
-    if (isCreatingConversation) return;
-    setIsCreatingConversation(true);
-    createConversationMutation.mutate();
-  };
-
   const handleSendMessage = async (value?: string) => {
     const messageContent = (value ?? inputValue).trim();
-    if (!messageContent || isCreatingConversation) return;
+    if (!messageContent || isCreatingConversation || isThinking) return;
 
-    // If no conversation is selected, create one first
+    // New chat: create with the first message (API already replies)
     if (!selectedConversationId) {
-      await createNewConversation();
-      // Don't proceed if conversation creation failed
-      if (!selectedConversationId) {
-        return;
+      setInputValue("");
+      setIsThinking(true);
+      setIsCreatingConversation(true);
+      try {
+        await createConversationMutation.mutateAsync(messageContent);
+      } catch (error) {
+        if (error instanceof ApiError) {
+          console.error(
+            "Create conversation API error:",
+            error.status,
+            error.message,
+          );
+        } else {
+          console.error("Failed to create conversation:", error);
+        }
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "user",
+            content: messageContent,
+            timestamp: new Date(),
+          },
+          {
+            role: "assistant",
+            content: generateAIResponse(),
+            timestamp: new Date(),
+          },
+        ]);
+      } finally {
+        setIsThinking(false);
       }
+      return;
     }
 
-    // Add user message to UI immediately
     const userMessage: IChatMessage = {
       role: "user",
       content: messageContent,
@@ -237,36 +307,30 @@ export default function IdeAiAssistant({
     setIsThinking(true);
 
     try {
-      // Send message to API
       const updatedConversation = await aiConversationApi.sendMessage(
         selectedConversationId,
         {
           message: messageContent,
           lessonId: lessonId,
-        }
+        },
       );
 
-      setMessages(updatedConversation.messages);
-      queryClient.setQueryData(
-        queryKeys.ai.conversations(studentId),
-        (prev: IAiConversation[] | undefined) => {
-          if (!prev) return [updatedConversation];
-          return prev.map((c) =>
-            c._id === updatedConversation._id ? updatedConversation : c
-          );
-        }
-      );
+      setMessages(updatedConversation.messages || []);
+      upsertConversationInCache(updatedConversation);
     } catch (error) {
-      if (error instanceof ApiError && error.body) {
-        console.error("Send message API error:", error.status, error.message, error.body);
+      if (error instanceof ApiError) {
+        console.error(
+          "Send message API error:",
+          error.status,
+          error.message,
+        );
       } else {
         console.error("Failed to send message:", error);
       }
 
-      // Fallback to mock response if API fails
       const timeoutId = setTimeout(() => {
         pendingTimeoutsRef.current = pendingTimeoutsRef.current.filter(
-          (t) => t !== timeoutId
+          (t) => t !== timeoutId,
         );
         if (!isMountedRef.current) return;
         const aiResponse: IChatMessage = {
@@ -433,15 +497,9 @@ export default function IdeAiAssistant({
           activeTab={activeTab}
           onTabChange={setActiveTab}
           onConversationSelect={(conversationId) => {
-            const conversation = conversations.find(
-              (c) => c._id === conversationId
-            );
-            if (conversation) {
-              setSelectedConversationId(conversation._id);
-              setMessages(conversation.messages || []);
-              // Close sidebar after selection on mobile
-              setIsConversationSidebarOpen(false);
-            }
+            setSelectedConversationId(conversationId);
+            setIsConversationSidebarOpen(false);
+            void loadConversationMessages(conversationId);
           }}
           onNewConversation={handleNewChat}
           isOpen={isConversationSidebarOpen}

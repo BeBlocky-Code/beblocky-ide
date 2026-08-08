@@ -125,7 +125,10 @@ export default function LearnPage() {
       return Number.isFinite(t) ? t : 0;
     };
 
-    return (slides || []).slice().sort((a, b) => {
+    return (slides || [])
+      .filter((s): s is ISlide => typeof s === "object" && s !== null)
+      .slice()
+      .sort((a, b) => {
       const orderDiff = toOrder(a) - toOrder(b);
       if (orderDiff !== 0) return orderDiff;
       const timeDiff = toTime(a) - toTime(b);

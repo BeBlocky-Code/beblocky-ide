@@ -78,7 +78,12 @@ export default function IdeSlides({
       return Number.isFinite(t) ? t : 0;
     };
 
-    return (slides || []).slice().sort((a: any, b: any) => {
+    // Ignore unpopulated ObjectId strings from course.lessons[].slides
+    const docs = (slides || []).filter(
+      (s): s is Slide => typeof s === "object" && s !== null,
+    );
+
+    return docs.slice().sort((a: any, b: any) => {
       const orderDiff = toOrder(a) - toOrder(b);
       if (orderDiff !== 0) return orderDiff;
       const timeDiff = toTime(a) - toTime(b);

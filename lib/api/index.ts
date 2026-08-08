@@ -9,6 +9,7 @@ export { codeAnalysisApi } from "./code-analysis";
 
 import { courseApi } from "./course";
 import { lessonApi } from "./lesson";
+import { slideApi } from "./slide";
 
 function sortSlides(slides: any[]) {
   return slides.slice().sort((a, b) => {
@@ -30,39 +31,55 @@ function sortSlides(slides: any[]) {
   });
 }
 
-// Prefer populated lessons (no N+1 slide fetches).
+function isPopulatedSlide(slide: unknown): boolean {
+  return typeof slide === "object" && slide !== null && !Array.isArray(slide);
+}
+
+function normalizeLessonSlides(lesson: any) {
+  const raw = Array.isArray(lesson?.slides) ? lesson.slides : [];
+  const docs = raw.filter(isPopulatedSlide);
+  return { ...lesson, slides: sortSlides(docs) };
+}
+
+// Course metadata + lessons-by-course (slides populated). Course GET only
+// populates lessons — lesson.slides stay as ObjectId strings.
 export const getCourseWithContent = async (courseId: string) => {
   try {
-    const course = await courseApi.getById(courseId);
-    const nestedLessons = (course as { lessons?: unknown }).lessons;
+    const [course, lessons] = await Promise.all([
+      courseApi.getById(courseId),
+      lessonApi.getByCourseId(courseId),
+    ]);
 
-    if (
-      Array.isArray(nestedLessons) &&
-      nestedLessons.length > 0 &&
-      typeof nestedLessons[0] === "object" &&
-      nestedLessons[0] !== null &&
-      "slides" in (nestedLessons[0] as object)
-    ) {
-      const sortedLessons = [...(nestedLessons as any[])]
-        .map((lesson) => ({
-          ...lesson,
-          slides: Array.isArray(lesson.slides)
-            ? sortSlides(lesson.slides)
-            : [],
-        }))
-        .sort((a, b) => Number(a?.order || 0) - Number(b?.order || 0));
-      return { ...course, lessons: sortedLessons };
-    }
+    let sortedLessons = [...(lessons || [])]
+      .map(normalizeLessonSlides)
+      .sort((a, b) => Number(a?.order || 0) - Number(b?.order || 0));
 
-    const lessons = await lessonApi.getByCourseId(courseId);
-    const sortedLessons = [...lessons]
-      .map((lesson: any) => ({
-        ...lesson,
-        slides: Array.isArray(lesson.slides) ? sortSlides(lesson.slides) : [],
-      }))
-      .sort(
-        (a: any, b: any) => Number(a?.order || 0) - Number(b?.order || 0)
+    const needsSlideHydration = (lessons || []).some((lesson: any) => {
+      const originalSlides = Array.isArray(lesson?.slides) ? lesson.slides : [];
+      return (
+        originalSlides.length > 0 &&
+        originalSlides.some((s: unknown) => !isPopulatedSlide(s))
       );
+    });
+
+    if (needsSlideHydration) {
+      sortedLessons = await Promise.all(
+        sortedLessons.map(async (lesson: any) => {
+          if ((lesson.slides?.length || 0) > 0) return lesson;
+          const lessonId = String(lesson?._id || lesson?.id || "");
+          if (!lessonId) return lesson;
+          try {
+            const slides = await slideApi.getByLessonId(lessonId);
+            return {
+              ...lesson,
+              slides: sortSlides(Array.isArray(slides) ? slides : []),
+            };
+          } catch {
+            return lesson;
+          }
+        }),
+      );
+    }
 
     return {
       ...course,

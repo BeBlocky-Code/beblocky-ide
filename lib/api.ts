@@ -107,48 +107,81 @@ export const studentApi = {
     }),
 };
 
-// Helper function to get course with full content (lessons and slides)
+function sortSlides(slides: any[]) {
+  return slides.slice().sort((a, b) => {
+    const orderA = Number.isFinite(Number(a?.order))
+      ? Number(a?.order)
+      : Number.MAX_SAFE_INTEGER;
+    const orderB = Number.isFinite(Number(b?.order))
+      ? Number(b?.order)
+      : Number.MAX_SAFE_INTEGER;
+    const orderDiff = orderA - orderB;
+    if (orderDiff !== 0) return orderDiff;
+
+    const timeA = new Date(a?.updatedAt || a?.createdAt || 0).getTime();
+    const timeB = new Date(b?.updatedAt || b?.createdAt || 0).getTime();
+    const timeDiff = timeA - timeB;
+    if (timeDiff !== 0) return timeDiff;
+
+    return String(a?._id || a?.id || "").localeCompare(
+      String(b?._id || b?.id || ""),
+    );
+  });
+}
+
+/** Course GET populates lessons but leaves lesson.slides as ObjectIds (strings). */
+function isPopulatedSlide(slide: unknown): boolean {
+  return typeof slide === "object" && slide !== null && !Array.isArray(slide);
+}
+
+function normalizeLessonSlides(lesson: any) {
+  const raw = Array.isArray(lesson?.slides) ? lesson.slides : [];
+  const docs = raw.filter(isPopulatedSlide);
+  return { ...lesson, slides: sortSlides(docs) };
+}
+
+// Course metadata + lessons-by-course (slides populated). Avoid trusting
+// course.lessons[].slides — those are usually unpopulated ObjectId refs.
 export const getCourseWithContent = async (courseId: string) => {
   try {
-    // Prefer a single course GET when the API nests lessons+slides.
-    const course = await courseApi.getById(courseId);
-    const nestedLessons = (course as { lessons?: unknown }).lessons;
+    const [course, lessons] = await Promise.all([
+      courseApi.getById(courseId),
+      lessonApi.getByCourseId(courseId),
+    ]);
 
-    if (
-      Array.isArray(nestedLessons) &&
-      nestedLessons.length > 0 &&
-      typeof nestedLessons[0] === "object" &&
-      nestedLessons[0] !== null &&
-      "slides" in (nestedLessons[0] as object)
-    ) {
-      const sortedLessons = [...(nestedLessons as any[])].map((lesson) => ({
-        ...lesson,
-        slides: Array.isArray(lesson.slides)
-          ? [...lesson.slides].sort(
-              (a: any, b: any) => (Number(a.order) || 0) - (Number(b.order) || 0)
-            )
-          : [],
-      }));
-      sortedLessons.sort(
-        (a: any, b: any) => Number(a?.order || 0) - Number(b?.order || 0)
-      );
-      return { ...course, lessons: sortedLessons };
-    }
-
-    // Fallback: one lessons-by-course call (backend populates slides).
-    const lessons = await lessonApi.getByCourseId(courseId);
-    const sortedLessons = [...lessons]
-      .map((lesson: any) => ({
-        ...lesson,
-        slides: Array.isArray(lesson.slides)
-          ? [...lesson.slides].sort(
-              (a: any, b: any) => (Number(a.order) || 0) - (Number(b.order) || 0)
-            )
-          : [],
-      }))
+    let sortedLessons = [...(lessons || [])]
+      .map(normalizeLessonSlides)
       .sort(
-        (a: any, b: any) => Number(a?.order || 0) - Number(b?.order || 0)
+        (a: any, b: any) => Number(a?.order || 0) - Number(b?.order || 0),
       );
+
+    // If lessons endpoint returned id-only slides, hydrate per lesson.
+    const needsSlideHydration = (lessons || []).some((lesson: any) => {
+      const originalSlides = Array.isArray(lesson?.slides) ? lesson.slides : [];
+      return (
+        originalSlides.length > 0 &&
+        originalSlides.some((s: unknown) => !isPopulatedSlide(s))
+      );
+    });
+
+    if (needsSlideHydration) {
+      sortedLessons = await Promise.all(
+        sortedLessons.map(async (lesson: any) => {
+          if ((lesson.slides?.length || 0) > 0) return lesson;
+          const lessonId = String(lesson?._id || lesson?.id || "");
+          if (!lessonId) return lesson;
+          try {
+            const slides = await slideApi.getByLessonId(lessonId);
+            return {
+              ...lesson,
+              slides: sortSlides(Array.isArray(slides) ? slides : []),
+            };
+          } catch {
+            return lesson;
+          }
+        }),
+      );
+    }
 
     return {
       ...course,

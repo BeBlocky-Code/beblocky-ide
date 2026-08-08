@@ -90,8 +90,8 @@ export default function IdeMessageList({
   const { theme } = useTheme();
   const accentColor = theme === "dark" ? "#892FFF" : "#FF932C";
 
-  // Filter out the first element (index 0) as it's not important for display
-  const displayMessages = messages.filter((_, i) => i > 0);
+  // Filter out system prompts — they are not meant for the chat UI
+  const displayMessages = messages.filter((m) => m.role !== "system");
   const lastMessageIsAssistant =
     displayMessages.length > 0 &&
     displayMessages[displayMessages.length - 1].role === "assistant";
