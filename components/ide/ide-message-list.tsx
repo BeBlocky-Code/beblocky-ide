@@ -2,7 +2,6 @@
 
 import { useRef, useEffect, useState, ReactElement } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bot, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { IChatMessage } from "@/types/ai";
 import { Shimmer } from "@/components/ai-elements/shimmer";

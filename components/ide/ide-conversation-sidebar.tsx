@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, MessageSquare, Clock, ChevronLeft, X, Sparkles, Code, MessageCircle } from "lucide-react";
+import { Plus, MessageSquare, Clock, ChevronLeft, X, History, Code, MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "./context/theme-provider";
 
@@ -152,7 +152,7 @@ export default function IdeConversationSidebar({
               <>
                 <div className="px-5 pt-4 flex items-center gap-2">
                   <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted/30 border border-border/20">
-                    <Sparkles size={12} className="text-primary" />
+                    <History size={12} className="text-primary" />
                     <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
                       {conversations.length} {conversations.length === 1 ? "Session" : "Sessions"}
                     </span>

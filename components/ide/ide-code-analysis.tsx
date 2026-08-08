@@ -5,7 +5,7 @@ import { ICodeAnalysis, ICodeFeedback } from "@/types/ai";
 import { useTheme } from "./context/theme-provider";
 import { cn } from "@/lib/utils";
 import {
-  Sparkles,
+  Info,
   Terminal,
   ShieldCheck,
   AlertTriangle,
@@ -79,7 +79,7 @@ export default function IdeCodeAnalysis({
           bg: "bg-blue-500/10",
           border: "border-blue-500/20",
           text: "text-blue-500",
-          icon: Sparkles,
+          icon: Info,
           shadow: "shadow-blue-500/5",
         };
     }
