@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { StickyNote, Plus, Trash2 } from "lucide-react";
+import { noteApi } from "@/lib/api/note";
 
 interface Note {
   id: string;
@@ -14,63 +15,84 @@ interface IdeNotesPanelProps {
   studentId?: string;
 }
 
+function parseNotes(text: string): Note[] {
+  if (!text) return [];
+  try {
+    const parsed: Array<{ id: string; content: string; createdAt: string }> =
+      JSON.parse(text);
+    if (!Array.isArray(parsed)) {
+      return [{ id: "legacy", content: text, createdAt: new Date() }];
+    }
+    return parsed.map((n) => ({ ...n, createdAt: new Date(n.createdAt) }));
+  } catch {
+    return [{ id: "legacy", content: text, createdAt: new Date() }];
+  }
+}
+
 export default function IdeNotesPanel({
   courseId = "default",
-  studentId = "guest",
 }: IdeNotesPanelProps) {
-  const storageKey = `ide-notes-${courseId}-${studentId}`;
-
   const [notes, setNotes] = useState<Note[]>([]);
   const [newNote, setNewNote] = useState("");
-  const [mounted, setMounted] = useState(false);
+  const [ready, setReady] = useState(false);
 
-  // Load notes from localStorage on mount
+  const persist = useCallback(
+    async (next: Note[]) => {
+      await noteApi.write(
+        courseId,
+        JSON.stringify(
+          next.map((n) => ({
+            id: n.id,
+            content: n.content,
+            createdAt: n.createdAt.toISOString(),
+          }))
+        )
+      );
+    },
+    [courseId]
+  );
+
   useEffect(() => {
-    setMounted(true);
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed: Array<{ id: string; content: string; createdAt: string }> =
-          JSON.parse(saved);
-        setNotes(
-          parsed.map((n) => ({ ...n, createdAt: new Date(n.createdAt) }))
-        );
-      }
-    } catch {
-      // ignore parse errors
-    }
-  }, [storageKey]);
+    let cancelled = false;
+    noteApi
+      .read(courseId)
+      .then((res) => {
+        if (!cancelled) {
+          setNotes(parseNotes(res.text));
+          setReady(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [courseId]);
 
-  // Persist notes whenever they change
-  useEffect(() => {
-    if (!mounted) return;
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(notes));
-    } catch {
-      // ignore storage errors
-    }
-  }, [notes, storageKey, mounted]);
-
-  const addNote = () => {
+  const addNote = async () => {
     if (!newNote.trim()) return;
-    setNotes((prev) => [
+    const next = [
       {
         id: Date.now().toString(),
         content: newNote.trim(),
         createdAt: new Date(),
       },
-      ...prev,
-    ]);
+      ...notes,
+    ];
+    setNotes(next);
     setNewNote("");
+    await persist(next);
   };
 
-  const deleteNote = (id: string) => {
-    setNotes((prev) => prev.filter((n) => n.id !== id));
+  const deleteNote = async (id: string) => {
+    const next = notes.filter((n) => n.id !== id);
+    setNotes(next);
+    await persist(next);
   };
 
   return (
     <div className="h-full flex flex-col bg-background border-l">
-      {/* Header */}
       <div className="flex items-center gap-2 px-5 py-4 border-b flex-shrink-0">
         <StickyNote
           size={18}
@@ -82,7 +104,6 @@ export default function IdeNotesPanel({
         </span>
       </div>
 
-      {/* Add note input */}
       <div className="px-4 py-3 border-b flex-shrink-0">
         <div className="flex gap-2">
           <input
@@ -90,23 +111,16 @@ export default function IdeNotesPanel({
             onChange={(e) => setNewNote(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addNote()}
             placeholder="Write a note..."
+            disabled={!ready}
             className="flex-1 bg-muted rounded-lg px-3 py-2 text-sm outline-none placeholder:text-muted-foreground border border-transparent focus:border-primary/30 transition-colors"
           />
           <button
             onClick={addNote}
-            disabled={!newNote.trim()}
+            disabled={!newNote.trim() || !ready}
             className="p-2 rounded-lg transition-colors disabled:opacity-30"
             style={{
               background: "hsl(var(--notes-accent) / 0.15)",
               color: "hsl(var(--notes-accent))",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background =
-                "hsl(var(--notes-accent) / 0.28)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background =
-                "hsl(var(--notes-accent) / 0.15)";
             }}
           >
             <Plus size={16} />
@@ -114,7 +128,6 @@ export default function IdeNotesPanel({
         </div>
       </div>
 
-      {/* Notes list */}
       <div className="flex-1 overflow-auto px-4 py-3 space-y-2 custom-scrollbar">
         {notes.map((note) => (
           <div

@@ -494,7 +494,7 @@ export default function IdeWorkspace({
             </TabsList>
 
             <div className="flex-1 overflow-hidden">
-              <TabsContent value="slides" className="h-full m-0 p-0">
+              <TabsContent value="slides" className="h-full m-0 p-0 overflow-auto">
                 <IdeSlides
                   slides={slides}
                   courseId={courseId}
@@ -548,6 +548,7 @@ export default function IdeWorkspace({
                   minSize={15}
                   className="min-w-0 overflow-hidden"
                 >
+                  <div className="h-full overflow-auto">
                   <IdeSlides
                     slides={slides}
                     courseId={courseId}
@@ -558,6 +559,7 @@ export default function IdeWorkspace({
                     onSlideChange={onSlideChange}
                     courseProgress={slideProgressStats}
                   />
+                  </div>
                 </ResizablePanel>
                 <ResizableHandle withHandle />
               </>

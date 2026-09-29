@@ -6,6 +6,7 @@ export { progressApi } from "./progress";
 export { studentApi } from "./student";
 export { aiConversationApi } from "./ai-conversation";
 export { codeAnalysisApi } from "./code-analysis";
+export { noteApi } from "./note";
 
 import { courseApi } from "./course";
 import { lessonApi } from "./lesson";
