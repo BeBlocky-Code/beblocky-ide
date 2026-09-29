@@ -509,6 +509,7 @@ export default function IdeWorkspace({
                 <IdeChallengePath
                   courseId={courseId}
                   lessonId={currentLessonId}
+                  code={mainCode}
                 />
               </TabsContent>
 
@@ -567,6 +568,7 @@ export default function IdeWorkspace({
                   <IdeChallengePath
                     courseId={courseId}
                     lessonId={currentLessonId}
+                    code={mainCode}
                   />
                   </div>
                 </ResizablePanel>
