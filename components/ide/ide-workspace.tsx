@@ -22,6 +22,7 @@ import IdePreview from "./ide-preview";
 import IdeAiAssistant from "./ide-ai-assistant";
 import IdeConsole, { type IdeConsoleHandle } from "./ide-console";
 import IdeNotesPanel from "./ide-notes-panel";
+import IdeChallengePath from "./ide-challenge-path";
 import { Book, Code, Play, Bot, Terminal, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ILesson } from "@/types";
@@ -505,6 +506,10 @@ export default function IdeWorkspace({
                   onSlideChange={onSlideChange}
                   courseProgress={slideProgressStats}
                 />
+                <IdeChallengePath
+                  courseId={courseId}
+                  lessonId={currentLessonId}
+                />
               </TabsContent>
 
               <TabsContent value="editor" className="h-full m-0 p-0">
@@ -558,6 +563,10 @@ export default function IdeWorkspace({
                     initialSlideIndex={initialSlideIndex}
                     onSlideChange={onSlideChange}
                     courseProgress={slideProgressStats}
+                  />
+                  <IdeChallengePath
+                    courseId={courseId}
+                    lessonId={currentLessonId}
                   />
                   </div>
                 </ResizablePanel>
