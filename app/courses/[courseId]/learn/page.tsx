@@ -24,6 +24,12 @@ import IdeLoadingSkeleton from "@/components/ide/ide-loading";
 import { studentApi } from "@/lib/api/student";
 import { useSession } from "@/lib/auth-client";
 import { queryKeys } from "@/lib/query-keys";
+import { ApiError } from "@/lib/api/utils";
+import {
+  idePageError,
+  primaryUserRole,
+  shouldFetchStudentProfile,
+} from "@/lib/ide-access";
 
 interface UserData {
   _id: string;
@@ -88,10 +94,18 @@ export default function LearnPage() {
     enabled: !!realCourseId,
     staleTime: 5 * 60 * 1000,
   });
+  const shouldFetchStudent = shouldFetchStudentProfile({
+    userId: session?.user?.id,
+    roles: session?.user?.roles,
+  });
   const studentQuery = useQuery({
     queryKey: queryKeys.students.byUserId(session?.user?.id ?? ""),
     queryFn: () => studentApi.getByUserId(session!.user!.id),
-    enabled: !!session?.user?.id,
+    enabled: shouldFetchStudent,
+    retry: (failureCount, error) => {
+      if (error instanceof ApiError && error.status === 404) return false;
+      return failureCount < 2;
+    },
   });
   const resolvedStudentId = studentQuery.data?._id?.toString() ?? null;
 
@@ -203,25 +217,17 @@ export default function LearnPage() {
 
   const invalidCourseId = !!encryptedCourseId && !realCourseId;
   const noSession = !isSessionPending && !session?.user;
-  // Do not block the IDE on progress — paint course/student first, hydrate completion later.
+  // Do not block the IDE on a missing student profile — staff and guests preview.
   const isLoadingInitial =
     isSessionPending ||
     (courseQuery.isLoading && !!realCourseId) ||
-    (!!session?.user?.id && studentQuery.isLoading);
-  const hasError =
-    invalidCourseId ||
-    noSession ||
-    courseQuery.isError ||
-    (!!session?.user && studentQuery.isError && !studentQuery.data);
-  const errorMessage = invalidCourseId
-    ? "Invalid course link. Please open the course from the learning portal."
-    : noSession
-      ? "Please sign in to continue. Open the course from the learning portal."
-      : courseQuery.error != null
-        ? "Failed to load course."
-        : !!session?.user && studentQuery.error != null
-          ? "Failed to load your profile."
-          : null;
+    (shouldFetchStudent && studentQuery.isLoading);
+  const errorMessage = idePageError({
+    invalidCourseId,
+    signedOut: noSession,
+    courseFailed: courseQuery.isError,
+  });
+  const hasError = errorMessage != null;
 
   // Sync state from query data and derive userData
   const courseData = courseQuery.data;
@@ -229,46 +235,22 @@ export default function LearnPage() {
 
   // Derive user data from session + student (no email in URL)
   const derivedUserData = useMemo<UserData | null>(() => {
-    if (session?.user && studentQuery.data) {
-      const u = session.user;
-      return {
-        _id: resolvedStudentId || u.id,
-        id: resolvedStudentId || u.id,
-        name: u.name ?? "",
-        email: u.email ?? "",
-        initials: generateInitials(u.name ?? u.email ?? "", u.email),
-        role: UserRole.STUDENT,
-        progress: {},
-        preferences: {},
-        emailVerified: true,
-        createdAt: new Date(0),
-        updatedAt: new Date(0),
-      };
-    }
-    if (session?.user && !studentQuery.isLoading && studentQuery.isError) {
-      const u = session.user;
-      return {
-        _id: u.id,
-        id: u.id,
-        name: u.name ?? "",
-        email: u.email ?? "",
-        initials: generateInitials(u.name ?? u.email ?? "", u.email),
-        role: UserRole.STUDENT,
-        progress: {},
-        preferences: {},
-        emailVerified: true,
-        createdAt: new Date(0),
-        updatedAt: new Date(0),
-      };
-    }
-    return null;
-  }, [
-    session?.user,
-    studentQuery.data,
-    studentQuery.isLoading,
-    studentQuery.isError,
-    resolvedStudentId,
-  ]);
+    if (!session?.user) return null;
+    const u = session.user;
+    return {
+      _id: resolvedStudentId || u.id,
+      id: resolvedStudentId || u.id,
+      name: u.name ?? "",
+      email: u.email ?? "",
+      initials: generateInitials(u.name ?? u.email ?? "", u.email),
+      role: primaryUserRole(u.roles) as UserRole,
+      progress: {},
+      preferences: {},
+      emailVerified: true,
+      createdAt: new Date(0),
+      updatedAt: new Date(0),
+    };
+  }, [session?.user, resolvedStudentId]);
 
   // Sync initial UI state from queries (once per realCourseId + user ready)
   useEffect(() => {
@@ -278,9 +260,7 @@ export default function LearnPage() {
       hasInitializedFromQueries.current
     )
       return;
-    const userReady =
-      derivedUserData != null ||
-      (!!session?.user && studentQuery.isError);
+    const userReady = derivedUserData != null;
     const progressReady =
       !resolvedStudentId || progressQuery.isSuccess || progressQuery.isError;
     if (!userReady || !progressReady) return;
@@ -375,7 +355,6 @@ export default function LearnPage() {
     derivedUserData?.id,
     resolvedStudentId,
     session?.user,
-    studentQuery.isError,
     progressQuery.isSuccess,
     progressQuery.isError,
   ]);
