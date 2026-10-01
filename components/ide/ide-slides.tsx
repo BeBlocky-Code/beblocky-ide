@@ -29,6 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Slide } from "@/lib/mock-data";
 import IdeLessonNavigator from "./ide-lesson-navigator";
 import IdeMarkdownPreview from "./ide-markdown-preview";
+import IdeChallengePath from "./ide-challenge-path";
 import { useTheme } from "./context/theme-provider";
 
 type LessonItem = {
@@ -54,6 +55,7 @@ export default function IdeSlides({
   initialSlideIndex = 0,
   onSlideChange,
   courseProgress,
+  code,
 }: {
   slides: Slide[];
   courseId: string;
@@ -67,6 +69,7 @@ export default function IdeSlides({
     completedSlides: number;
     totalSlides: number;
   };
+  code?: string;
 }) {
   const orderedSlides = useMemo(() => {
     const toOrder = (s: any) => {
@@ -468,6 +471,18 @@ export default function IdeSlides({
                       Examples
                     </TabsTrigger>
                   )}
+                  <TabsTrigger
+                    value="challenges"
+                    className="text-xs px-4 rounded-full data-[state=active]:text-white transition-all duration-300 font-bold"
+                    style={{
+                      backgroundColor:
+                        activeTab === "challenges"
+                          ? accentColor
+                          : "transparent",
+                    }}
+                  >
+                    Challenges
+                  </TabsTrigger>
                 </TabsList>
               </div>
 
@@ -543,6 +558,20 @@ export default function IdeSlides({
                     </div>
                   )}
                 </div>
+              </TabsContent>
+
+              <TabsContent
+                value="challenges"
+                className={cn(
+                  "flex-1 overflow-hidden m-0 p-0 min-w-0",
+                  shouldAnimate && "animate-in fade-in duration-300",
+                )}
+              >
+                <IdeChallengePath
+                  courseId={courseId}
+                  lessonId={currentLessonId}
+                  code={code}
+                />
               </TabsContent>
             </Tabs>
           </motion.div>
