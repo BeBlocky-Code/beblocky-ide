@@ -3,15 +3,34 @@
  * so we never hardcode localhost:8080. Session endpoint: ${APP_SERVICE_URL}/api/v1/auth/session
  */
 
-// Auth service base; session at ${NEXT_PUBLIC_APP_SERVICE_URL}/api/v1/auth/session.
-// Production: never uses localhost; use NEXT_PUBLIC_APP_SERVICE_URL or fallback to auth-service.beblocky.com.
-// Development: set NEXT_PUBLIC_APP_SERVICE_URL in .env.local (e.g. http://localhost:8080) so session URL is explicit.
-const AUTH_BASE =
-  typeof process !== "undefined" && process.env.NEXT_PUBLIC_APP_SERVICE_URL
-    ? `${process.env.NEXT_PUBLIC_APP_SERVICE_URL.replace(/\/$/, "")}/api/v1`
-    : process.env.NODE_ENV === "production"
-      ? "https://auth-service.beblocky.com/api/v1"
-      : "http://localhost:8080/api/v1"; // dev fallback only; set NEXT_PUBLIC_APP_SERVICE_URL to avoid hardcoded localhost
+const PRODUCTION_AUTH_SERVICE = "https://auth-service.beblocky.com";
+
+function isLoopbackUrl(raw: string): boolean {
+  try {
+    const host = new URL(raw).hostname.toLowerCase();
+    return (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "::1" ||
+      host === "[::1]"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function authServiceBase(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_APP_SERVICE_URL?.trim();
+  if (process.env.NODE_ENV === "production") {
+    if (fromEnv && !isLoopbackUrl(fromEnv)) {
+      return fromEnv.replace(/\/$/, "");
+    }
+    return PRODUCTION_AUTH_SERVICE;
+  }
+  return (fromEnv || "http://localhost:8080").replace(/\/$/, "");
+}
+
+const AUTH_BASE = `${authServiceBase()}/api/v1`;
 
 export type SessionUser = {
   id: string;
