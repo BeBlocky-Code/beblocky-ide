@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { m, AnimatePresence } from "framer-motion";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -300,7 +300,7 @@ export default function IdeSlides({
 
       <AnimatePresence mode="wait">
         {showLessonComplete ? (
-          <motion.div
+          <m.div
             key="lesson-complete"
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
@@ -314,7 +314,7 @@ export default function IdeSlides({
                 backgroundImage: `radial-gradient(ellipse 80% 60% at 50% 0%, ${accentSoft}, transparent 70%)`,
               }}
             >
-              <motion.div
+              <m.div
                 initial={{ scale: 0.7, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{
@@ -334,9 +334,9 @@ export default function IdeSlides({
                 ) : (
                   <Trophy className="h-7 w-7" style={{ color: accentColor }} />
                 )}
-              </motion.div>
+              </m.div>
 
-              <motion.div
+              <m.div
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.12 }}
@@ -370,9 +370,9 @@ export default function IdeSlides({
                     "Every lesson in this course is behind you."
                   )}
                 </p>
-              </motion.div>
+              </m.div>
 
-              <motion.div
+              <m.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.2 }}
@@ -430,11 +430,11 @@ export default function IdeSlides({
                 >
                   Review slides
                 </Button>
-              </motion.div>
+              </m.div>
             </div>
-          </motion.div>
+          </m.div>
         ) : (
-          <motion.div
+          <m.div
             key="lesson-content"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -574,7 +574,7 @@ export default function IdeSlides({
                 />
               </TabsContent>
             </Tabs>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
 

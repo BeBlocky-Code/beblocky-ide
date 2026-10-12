@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import { Code2, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "./context/theme-provider";
@@ -22,7 +22,7 @@ export default function IdeModeToggle({
       className="relative flex items-center rounded-full p-1 bg-muted/50 border border-border/40 shadow-inner w-fit min-w-[140px] xs:min-w-[180px] md:min-w-[220px]"
     >
       {/* Sliding pill background */}
-      <motion.div
+      <m.div
         className="absolute h-[calc(100%-8px)] rounded-full shadow-sm"
         style={{ 
           background: accentColor,
