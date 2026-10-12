@@ -14,7 +14,7 @@ import {
   Link,
   ImageIcon,
 } from "lucide-react";
-import { SafeMarkdown } from "@/components/markdown/safe-markdown";
+import { SafeMarkdown } from "@/components/markdown/lazy-safe-markdown";
 import { useTheme } from "./context/theme-provider";
 
 interface MarkdownPreviewProps {

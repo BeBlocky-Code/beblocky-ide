@@ -22,7 +22,7 @@ import { UserRole } from "@/types/user";
 import { IStudentProgress } from "@/types/progress";
 import IdeLoadingSkeleton from "@/components/ide/ide-loading";
 import { studentApi } from "@/lib/api/student";
-import { useSession } from "@/lib/auth-client";
+import { useSession } from "@/lib/use-session";
 import { queryKeys } from "@/lib/query-keys";
 import { ApiError } from "@/lib/api/utils";
 import {

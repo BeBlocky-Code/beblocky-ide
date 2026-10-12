@@ -6,39 +6,13 @@ import { useTheme } from "./context/theme-provider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Maximize2, Minimize2, Code, Loader2, RefreshCw } from "lucide-react";
-import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
-
-// Dynamically import Ace Editor to avoid SSR issues
-const AceEditor = dynamic(
-  async () => {
-    // Import the core Ace module first
-    await import("ace-builds/src-noconflict/ace");
-
-    // Import modes
-    await import("ace-builds/src-noconflict/mode-html");
-    await import("ace-builds/src-noconflict/mode-css");
-    await import("ace-builds/src-noconflict/mode-javascript");
-    await import("ace-builds/src-noconflict/mode-python");
-
-    // Import themes
-    await import("ace-builds/src-noconflict/theme-dracula");
-    await import("ace-builds/src-noconflict/theme-chrome");
-    await import("ace-builds/src-noconflict/theme-github");
-    await import("ace-builds/src-noconflict/theme-monokai");
-    await import("ace-builds/src-noconflict/theme-tomorrow");
-    await import("ace-builds/src-noconflict/theme-twilight");
-    await import("ace-builds/src-noconflict/theme-xcode");
-
-    // Import extensions
-    await import("ace-builds/src-noconflict/ext-language_tools");
-
-    // Finally import the React component
-    const ace = await import("react-ace");
-    return ace.default;
-  },
-  { ssr: false }
-);
+import { activeAceTheme, type AceMode } from "@/lib/ace-packs";
+import {
+  AceRuntimeProvider,
+  useAceRuntime,
+  useAceRuntimeValue,
+} from "./use-ace-runtime";
 
 interface CodeState {
   htmlCode: string;
@@ -168,10 +142,25 @@ export default function IdeEditor({
 
   const editorTheme =
     settings.editorTheme || (theme === "dark" ? "dracula" : "chrome");
+  const lesson = { courseLanguage: normalizedCourseLanguage, editorTheme };
+  const ace = useAceRuntime(lesson);
+  const requestedTheme = activeAceTheme(editorTheme);
+  const resolvedTheme = ace.readyThemes.has(requestedTheme)
+    ? requestedTheme
+    : (ace.readyThemes.values().next().value ?? "dracula");
 
   const accentColor = theme === "dark" ? "#892FFF" : "#FF932C";
 
   return (
+    <AceRuntimeProvider
+      value={{
+        Editor: ace.Editor,
+        readyModes: ace.readyModes,
+        theme: resolvedTheme,
+        toolsReady: ace.toolsReady,
+        fontSize: settings.fontSize || 14,
+      }}
+    >
     <div ref={editorRef} className="h-full flex flex-col bg-background border rounded-xl overflow-hidden shadow-sm transition-all duration-300 ease-in-out">
       <div className="border-b flex items-center justify-between px-2 md:px-3 py-1.5 bg-muted/20 backdrop-blur-sm">
         <div className="flex items-center gap-2">
@@ -252,26 +241,13 @@ export default function IdeEditor({
               main.py
             </div>
             <div className="flex-1 min-h-0">
-              <AceEditor
+              <BoundAce
                 mode="python"
-                theme={editorTheme}
                 onChange={(value) => handleCodeChange(value, "pythonCode")}
                 value={code.pythonCode}
                 name="python-editor"
-                width="100%"
                 height="100%"
-                fontSize={settings.fontSize || 14}
-                showPrintMargin={false}
-                showGutter={true}
-                highlightActiveLine={true}
-                setOptions={{
-                  enableBasicAutocompletion: true,
-                  enableLiveAutocompletion: true,
-                  enableSnippets: true,
-                  showLineNumbers: true,
-                  tabSize: 4,
-                  useWorker: false,
-                }}
+                tabSize={4}
               />
             </div>
           </div>
@@ -282,26 +258,13 @@ export default function IdeEditor({
               <div className="bg-[#1e1e1e] text-white text-xs px-3 py-1">
                 index.html
               </div>
-              <AceEditor
+              <BoundAce
                 mode="html"
-                theme={editorTheme}
                 onChange={(value) => handleCodeChange(value, "htmlCode")}
                 value={code.htmlCode}
                 name="html-editor"
-                width="100%"
                 height="calc(100% - 24px)"
-                fontSize={settings.fontSize || 14}
-                showPrintMargin={false}
-                showGutter={true}
-                highlightActiveLine={true}
-                setOptions={{
-                  enableBasicAutocompletion: true,
-                  enableLiveAutocompletion: true,
-                  enableSnippets: true,
-                  showLineNumbers: true,
-                  tabSize: 2,
-                  useWorker: false,
-                }}
+                tabSize={2}
               />
             </div>
 
@@ -309,26 +272,13 @@ export default function IdeEditor({
               <div className="bg-[#1e1e1e] text-white text-xs px-3 py-1">
                 style.css
               </div>
-              <AceEditor
+              <BoundAce
                 mode="css"
-                theme={editorTheme}
                 onChange={(value) => handleCodeChange(value, "cssCode")}
                 value={code.cssCode}
                 name="css-editor"
-                width="100%"
                 height="calc(100% - 24px)"
-                fontSize={settings.fontSize || 14}
-                showPrintMargin={false}
-                showGutter={true}
-                highlightActiveLine={true}
-                setOptions={{
-                  enableBasicAutocompletion: true,
-                  enableLiveAutocompletion: true,
-                  enableSnippets: true,
-                  showLineNumbers: true,
-                  tabSize: 2,
-                  useWorker: false,
-                }}
+                tabSize={2}
               />
             </div>
 
@@ -336,26 +286,13 @@ export default function IdeEditor({
               <div className="bg-[#1e1e1e] text-white text-xs px-3 py-1">
                 script.js
               </div>
-              <AceEditor
+              <BoundAce
                 mode="javascript"
-                theme={editorTheme}
                 onChange={(value) => handleCodeChange(value, "jsCode")}
                 value={code.jsCode}
                 name="js-editor"
-                width="100%"
                 height="calc(100% - 24px)"
-                fontSize={settings.fontSize || 14}
-                showPrintMargin={false}
-                showGutter={true}
-                highlightActiveLine={true}
-                setOptions={{
-                  enableBasicAutocompletion: true,
-                  enableLiveAutocompletion: true,
-                  enableSnippets: true,
-                  showLineNumbers: true,
-                  tabSize: 2,
-                  useWorker: false,
-                }}
+                tabSize={2}
               />
             </div>
           </>
@@ -373,26 +310,13 @@ export default function IdeEditor({
               <div className="bg-[#1e1e1e] text-white text-xs px-3 py-1">
                 index.html
               </div>
-              <AceEditor
+              <BoundAce
                 mode="html"
-                theme={editorTheme}
                 onChange={(value) => handleCodeChange(value, "htmlCode")}
                 value={code.htmlCode}
                 name="html-editor"
-                width="100%"
                 height="calc(100% - 24px)"
-                fontSize={settings.fontSize || 14}
-                showPrintMargin={false}
-                showGutter={true}
-                highlightActiveLine={true}
-                setOptions={{
-                  enableBasicAutocompletion: true,
-                  enableLiveAutocompletion: true,
-                  enableSnippets: true,
-                  showLineNumbers: true,
-                  tabSize: 2,
-                  useWorker: false,
-                }}
+                tabSize={2}
               />
             </TabsContent>
 
@@ -403,26 +327,13 @@ export default function IdeEditor({
               <div className="bg-[#1e1e1e] text-white text-xs px-3 py-1">
                 style.css
               </div>
-              <AceEditor
+              <BoundAce
                 mode="css"
-                theme={editorTheme}
                 onChange={(value) => handleCodeChange(value, "cssCode")}
                 value={code.cssCode}
                 name="css-editor"
-                width="100%"
                 height="calc(100% - 24px)"
-                fontSize={settings.fontSize || 14}
-                showPrintMargin={false}
-                showGutter={true}
-                highlightActiveLine={true}
-                setOptions={{
-                  enableBasicAutocompletion: true,
-                  enableLiveAutocompletion: true,
-                  enableSnippets: true,
-                  showLineNumbers: true,
-                  tabSize: 2,
-                  useWorker: false,
-                }}
+                tabSize={2}
               />
             </TabsContent>
 
@@ -433,32 +344,75 @@ export default function IdeEditor({
               <div className="bg-[#1e1e1e] text-white text-xs px-3 py-1">
                 script.js
               </div>
-              <AceEditor
+              <BoundAce
                 mode="javascript"
-                theme={editorTheme}
                 onChange={(value) => handleCodeChange(value, "jsCode")}
                 value={code.jsCode}
                 name="js-editor"
-                width="100%"
                 height="calc(100% - 24px)"
-                fontSize={settings.fontSize || 14}
-                showPrintMargin={false}
-                showGutter={true}
-                highlightActiveLine={true}
-                setOptions={{
-                  enableBasicAutocompletion: true,
-                  enableLiveAutocompletion: true,
-                  enableSnippets: true,
-                  showLineNumbers: true,
-                  tabSize: 2,
-                  useWorker: false,
-                }}
+                tabSize={2}
               />
             </TabsContent>
           </Tabs>
         )}
       </div>
     </div>
+    </AceRuntimeProvider>
+  );
+}
+
+function BoundAce({
+  mode,
+  value,
+  onChange,
+  name,
+  height,
+  tabSize,
+}: {
+  mode: AceMode;
+  value: string;
+  onChange: (value: string) => void;
+  name: string;
+  height: string;
+  tabSize: number;
+}) {
+  const ace = useAceRuntimeValue();
+  if (!ace?.Editor || !ace.readyModes.has(mode)) {
+    return (
+      <div
+        className="flex items-center justify-center"
+        style={{ width: "100%", height }}
+        role="status"
+      >
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <span className="sr-only">Loading editor</span>
+      </div>
+    );
+  }
+
+  const Editor = ace.Editor;
+  return (
+    <Editor
+      mode={mode}
+      theme={ace.theme}
+      onChange={onChange}
+      value={value}
+      name={name}
+      width="100%"
+      height={height}
+      fontSize={ace.fontSize}
+      showPrintMargin={false}
+      showGutter={true}
+      highlightActiveLine={true}
+      setOptions={{
+        enableBasicAutocompletion: ace.toolsReady,
+        enableLiveAutocompletion: ace.toolsReady,
+        enableSnippets: ace.toolsReady,
+        showLineNumbers: true,
+        tabSize,
+        useWorker: false,
+      }}
+    />
   );
 }
 

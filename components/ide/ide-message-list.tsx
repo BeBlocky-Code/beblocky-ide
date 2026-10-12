@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { IChatMessage } from "@/types/ai";
 import { Shimmer } from "@/components/ai-elements/shimmer";
-import { SafeMarkdown } from "@/components/markdown/safe-markdown";
+import { SafeMarkdown } from "@/components/markdown/lazy-safe-markdown";
 import { useTheme } from "./context/theme-provider";
 import IdeChatInput from "./ide-chat-input";
 
