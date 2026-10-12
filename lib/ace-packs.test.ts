@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { aceLoadPlan } from "./ace-packs.ts";
+import { aceLoadPlan, isKnownAcePack } from "./ace-packs.ts";
 
 test("an HTML lesson paints with Ace core, the HTML mode, and one theme", () => {
   const plan = aceLoadPlan({ courseLanguage: "web", editorTheme: "dracula" });
@@ -49,4 +49,21 @@ test("other modes, themes, and snippets wait until after the editor can paint", 
     "ace-builds/src-noconflict/snippets/python",
   ]);
   assert.equal(plan.languageTools, "ace-builds/src-noconflict/ext-language_tools");
+});
+
+test("the loader imports the same packs the plan names", () => {
+  const plan = aceLoadPlan({ courseLanguage: "web", editorTheme: "dracula" });
+  const named = [
+    plan.core,
+    ...plan.withEditor,
+    ...plan.deferredModes,
+    ...plan.deferredThemes,
+    ...plan.deferredSnippets,
+    plan.languageTools,
+  ];
+
+  for (const specifier of named) {
+    if (specifier === "react-ace") continue;
+    assert.equal(isKnownAcePack(specifier), true, specifier);
+  }
 });

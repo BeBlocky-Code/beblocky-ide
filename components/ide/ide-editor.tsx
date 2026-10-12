@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Maximize2, Minimize2, Code, Loader2, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { activeAceTheme } from "@/lib/ace-packs";
+import { activeAceTheme, type AceMode } from "@/lib/ace-packs";
 import {
   AceRuntimeProvider,
   useAceRuntime,
@@ -142,7 +142,8 @@ export default function IdeEditor({
 
   const editorTheme =
     settings.editorTheme || (theme === "dark" ? "dracula" : "chrome");
-  const ace = useAceRuntime(normalizedCourseLanguage, editorTheme);
+  const lesson = { courseLanguage: normalizedCourseLanguage, editorTheme };
+  const ace = useAceRuntime(lesson);
   const requestedTheme = activeAceTheme(editorTheme);
   const resolvedTheme = ace.readyThemes.has(requestedTheme)
     ? requestedTheme
@@ -368,7 +369,7 @@ function BoundAce({
   height,
   tabSize,
 }: {
-  mode: "html" | "css" | "javascript" | "python";
+  mode: AceMode;
   value: string;
   onChange: (value: string) => void;
   name: string;
