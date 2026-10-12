@@ -51,19 +51,13 @@ export function useAceRuntime(courseLanguage: string, editorTheme: string): AceR
       setEditor(() => Loaded);
       setReadyModes((prev) => new Set(prev).add(plan.mode));
       setReadyThemes((prev) => new Set(prev).add(plan.theme));
-    });
-    return () => {
-      cancel = true;
-    };
-  }, [courseLanguage, editorTheme]);
-
-  useEffect(() => {
-    let cancel = false;
-    void loadDeferredAcePacks({ courseLanguage, editorTheme }).then(() => {
-      if (cancel) return;
-      setReadyModes(new Set(ACE_MODES));
-      setReadyThemes(new Set(ACE_THEMES));
-      setToolsReady(true);
+      // The active editor can paint now. Other packs must not compete with that download.
+      void loadDeferredAcePacks({ courseLanguage, editorTheme }).then(() => {
+        if (cancel) return;
+        setReadyModes(new Set(ACE_MODES));
+        setReadyThemes(new Set(ACE_THEMES));
+        setToolsReady(true);
+      });
     });
     return () => {
       cancel = true;
