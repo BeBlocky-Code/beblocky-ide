@@ -81,11 +81,23 @@ async function authFetch<T>(
 let cachedSession: { data?: SessionData; error?: { code: string; message: string } } | null =
   null;
 let cachedSessionAt = 0;
+let cacheEpoch = 0;
 let sessionInflight: Promise<{
   data?: SessionData;
   error?: { code: string; message: string };
 }> | null = null;
 const SESSION_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Prime the in-memory session from a check the server already made, so the
+ * browser does not repeat `/auth/session` and `/account` before API calls.
+ */
+export function rememberSession(session: SessionData) {
+  if (!session.valid || !session.user?.id || !session.token) return;
+  cacheEpoch += 1;
+  cachedSession = { data: session };
+  cachedSessionAt = Date.now();
+}
 
 export async function getSession(): Promise<{
   data?: SessionData;
@@ -98,6 +110,7 @@ export async function getSession(): Promise<{
   // Deduplicate concurrent session+account fetches across apiCall callers.
   if (sessionInflight) return sessionInflight;
 
+  const epoch = cacheEpoch;
   sessionInflight = (async () => {
     const {
       data: sessionData,
@@ -127,11 +140,15 @@ export async function getSession(): Promise<{
       const result = {
         data: { valid: true, user, token: sessionData.token } as SessionData,
       };
-      cachedSession = result;
-      cachedSessionAt = Date.now();
-      return result;
+      if (epoch === cacheEpoch) {
+        cachedSession = result;
+        cachedSessionAt = Date.now();
+      }
+      return cachedSession ?? result;
     }
-    return { data: { valid: false } as SessionData, error };
+    const invalid = { data: { valid: false } as SessionData, error };
+    if (epoch === cacheEpoch) cachedSession = null;
+    return cachedSession ?? invalid;
   })().finally(() => {
     sessionInflight = null;
   });
@@ -140,6 +157,7 @@ export async function getSession(): Promise<{
 }
 
 export function clearSessionCache() {
+  cacheEpoch += 1;
   cachedSession = null;
   cachedSessionAt = 0;
   sessionInflight = null;
@@ -164,5 +182,3 @@ export async function signOut(): Promise<void> {
   clearSessionCache();
   await authFetch("/auth/logout", { method: "POST" });
 }
-
-export { useSession } from "./use-session";
