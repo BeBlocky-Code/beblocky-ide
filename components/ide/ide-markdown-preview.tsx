@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import {
   Code2,
   FileText,
@@ -64,7 +64,7 @@ export default function IdeMarkdownPreview({
       <Card className="h-full bg-gradient-to-br from-slate-50/80 to-white/80 dark:from-slate-900/80 dark:to-slate-800/80 backdrop-blur-sm border-0 shadow-xl">
         {/* Content */}
         <ScrollArea className="h-[calc(100%-44px)] w-full">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.1 }}
@@ -75,7 +75,7 @@ export default function IdeMarkdownPreview({
               theme={theme}
               className={markdownClassName}
             />
-          </motion.div>
+          </m.div>
         </ScrollArea>
       </Card>
     </div>
